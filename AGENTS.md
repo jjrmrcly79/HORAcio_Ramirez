@@ -72,8 +72,7 @@ Corrección: los pizarrones HxH son **procesos**, no áreas; "Andromeda" es una
 |---|---|---|---|
 | SMT | SMT | Viridiana Escalona | TJ000360 = 102/hr (oficial) |
 | PTH | PTH (inserción manual + ola, **cuello**) | Yadira Magdariaga | por validar |
-| CONFORMAL | Conformal | por identificar #revisar | por validar |
-| OTROS | Otros (empaque y arneses) | por identificar #revisar | por validar |
+| CONFORMAL | Conformal | Rocío (Chío) | por validar |
 
 Dueños de escalamiento (nombres completos): Daniel Nava (paros), **Nayeli Hernández**
 (faltantes), Marco Sotelo (calidad), **Juan Carlos Martínez "JC"** (mantenimiento),
@@ -85,7 +84,7 @@ salieron?" (step `hxh_real`) y la líder escribe el número → se guarda `real`
 
 ### ⏳ Siguientes (post día-uno)
 - [ ] Estándar oficial de PTH/ola (ciclo 294 s/pasada → pzs/hr) con Ingeniería
-- [ ] Identificar líder Conformal y Producto Terminado (#revisar)
+- [ ] Estándar oficial de Conformal (hoy "por validar")
 - [ ] Estándar por modelo (SMT corre varios modelos; hoy solo TJ000360)
 - [ ] Scheduler pings horarios (7:35–15:35) + recordatorio 15 min
 - [ ] Resumen líder 15:40 + resumen Dirección 17:00 (LLM)
