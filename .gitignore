@@ -7,3 +7,4 @@ node_modules/
 # Los secretos (BOT_TOKEN, SERVICE_ROLE_KEY) viven en el nodo n8n, nunca en el repo.
 
 scripts/secrets.env
+.claude/settings.local.json
