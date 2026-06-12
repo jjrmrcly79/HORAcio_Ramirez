@@ -57,9 +57,19 @@ Fuente de verdad operativa (lo que n8n lee): tablas `horacio.*` en Supabase.
   - Resumen líder `40 15 * * 1-5` · Resumen Dirección `0 17 * * 1-5`
 - Probado end-to-end (faltante, calidad, ping_all, resumen_lider, resumen_dir).
 
+### ✅ Alta a prueba de tontos en `/start` (2026-06-12)
+`/start` ya no asume "eres líder de línea". Primero pregunta **"¿qué llevas a tu
+cargo?"** → 📋 Una línea de producción (botones SMT/PTH/Conformal) · 🔔 Un área de
+apoyo (Paros/Daniel · Materiales-Faltantes/Nayeli · Calidad/Marco · Mantto/JC ·
+Dirección/Jorge). Así cualquier dueño que teclee `/start` (lo natural) se registra
+bien sin toparse con la selección de líneas. `/dueno` queda como atajo y reusa el
+mismo `askArea()`. Causa raíz del bug: Nayeli (materiales) hizo `/start` y le pidió
+"SMT o PTH" — no completó, BD quedó limpia (nada que corregir manual).
+Ref: `n8n/horacio-bot.code.js` (acciones `start`/`reg_linea`/`reg_area`/`dueno` + helpers `askLine`/`askArea`).
+
 ### 🔌 Encendido para el piloto (R2-07) — checklist
-1. Cada **líder** hace `/start` al bot y elige su línea (auto-registro).
-2. Cada **dueño** (paros/faltantes/calidad/mantenimiento/dirección) hace `/dueno`.
+1. Cada **líder** hace `/start` → 📋 línea → elige su línea (auto-registro).
+2. Cada **dueño** hace `/start` → 🔔 área → elige su área (o `/dueno` directo).
 3. Confirmar **SLAs firmados** (Daniel Nava, Nayeli).
 4. (Opcional) resetear altas de prueba: `UPDATE horacio.personas SET chat_id=NULL, consentimiento=false;`
 5. **Activar** el workflow `Horacio - Scheduler` en la UI de n8n. ← esto enciende los pings.

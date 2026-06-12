@@ -147,6 +147,16 @@ const myLine = async () => {
 const menu = async (txt) => {
   await tg('sendMessage', { chat_id, text: txt || '¿Qué necesitas?', reply_markup: { inline_keyboard: [[{ text: '🛑 Reportar paro', callback_data: 'paro_start' }], [{ text: '📦 Falta material', callback_data: 'falt_start' }], [{ text: '🔎 Reportar calidad', callback_data: 'cal_start' }]] } });
 };
+const askLine = async () => {
+  const ls = await pg("SELECT codigo, nombre FROM horacio.lineas WHERE activa=true ORDER BY codigo");
+  const rows = ls.map((l) => [{ text: l.nombre, callback_data: 'alta_' + l.codigo }]);
+  await tg('sendMessage', { chat_id, text: `Va. ¿Qué línea llevas, ${esc(tgname)}?`, reply_markup: { inline_keyboard: rows } });
+};
+const askArea = async () => {
+  const roles = [['paros', 'Paros (Daniel)'], ['faltantes', 'Materiales / Faltantes (Nayeli)'], ['calidad', 'Calidad (Marco)'], ['mantenimiento', 'Mantenimiento (JC)'], ['direccion', 'Dirección (Jorge)']];
+  const rows = roles.map((r) => [{ text: r[1], callback_data: 'rol_' + r[0] }]);
+  await tg('sendMessage', { chat_id, text: '¿Qué área cubres? (recibirás los avisos de esa área)', reply_markup: { inline_keyboard: rows } });
+};
 
 let action = 'ignore';
 const cmd = text.trim().split(' ')[0];
@@ -158,6 +168,8 @@ else if (data === 'hxh_si') action = 'si';
 else if (data === 'hxh_no') action = 'no';
 else if (data.startsWith('pz_')) action = 'pz';
 else if (data.startsWith('c_')) action = 'causa';
+else if (data === 'reg_linea') action = 'reg_linea';
+else if (data === 'reg_area') action = 'reg_area';
 else if (data.startsWith('alta_')) action = 'alta_pick';
 else if (data.startsWith('rol_')) action = 'rol_pick';
 else if (data === 'paro_start') action = 'paro_start';
@@ -174,11 +186,11 @@ else if (data.startsWith('cack_')) action = 'cack';
 if (action === 'start') {
   const reg = await pg(`SELECT 1 FROM horacio.personas WHERE chat_id=${chat_id} LIMIT 1`);
   if (reg && reg.length) { await menu(`¿Cómo vamos, ${esc(tgname)}? Aquí estoy.`); return [{ json: { action: 'start-known' } }]; }
-  const ls = await pg("SELECT codigo, nombre FROM horacio.lineas WHERE activa=true ORDER BY codigo");
-  const rows = ls.map((l) => [{ text: l.nombre, callback_data: 'alta_' + l.codigo }]);
-  await tg('sendMessage', { chat_id, text: `Hola, soy Horacio 👋 Soy tu compañero del hora por hora. ¿Qué línea llevas, ${esc(tgname)}?`, reply_markup: { inline_keyboard: rows } });
+  await tg('sendMessage', { chat_id, text: `Hola, soy Horacio 👋 Soy tu compañero del hora por hora. Para empezar, ${esc(tgname)}: ¿qué llevas a tu cargo?`, reply_markup: { inline_keyboard: [[{ text: '📋 Una línea de producción', callback_data: 'reg_linea' }], [{ text: '🔔 Un área de apoyo', callback_data: 'reg_area' }]] } });
   return [{ json: { action } }];
 }
+if (action === 'reg_linea') { await rmKb(chat_id, mid); await askLine(); return [{ json: { action } }]; }
+if (action === 'reg_area') { await rmKb(chat_id, mid); await askArea(); return [{ json: { action } }]; }
 if (action === 'alta_pick') {
   await rmKb(chat_id, mid);
   const codigo = data.slice(5);
@@ -194,12 +206,7 @@ if (action === 'alta_pick') {
   await menu(`Listo 🙌 Quedaste como líder de ${esc(line.nombre)}. Yo te aviso el hora por hora y tú me reportas paros, faltantes y calidad. Usa /menu cuando quieras.`);
   return [{ json: { action } }];
 }
-if (action === 'dueno') {
-  const roles = [['paros', 'Paros (Daniel)'], ['faltantes', 'Faltantes (almacén)'], ['calidad', 'Calidad (Marco)'], ['mantenimiento', 'Mantenimiento (JC)'], ['direccion', 'Dirección (Jorge)']];
-  const rows = roles.map((r) => [{ text: r[1], callback_data: 'rol_' + r[0] }]);
-  await tg('sendMessage', { chat_id, text: '¿Qué área cubres? (recibirás los avisos de esa área)', reply_markup: { inline_keyboard: rows } });
-  return [{ json: { action } }];
-}
+if (action === 'dueno') { await askArea(); return [{ json: { action } }]; }
 if (action === 'rol_pick') {
   await rmKb(chat_id, mid);
   const rol = data.slice(4);
