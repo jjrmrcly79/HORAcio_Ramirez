@@ -31,25 +31,31 @@ if (b && b.admin) {
   const leaders = await pg("SELECT l.id AS linea_id, l.nombre, l.estandar_status, p.chat_id, (SELECT e.piezas_hora FROM horacio.estandares e WHERE e.linea_id=l.id AND e.vigente=true ORDER BY e.created_at DESC LIMIT 1) AS plan FROM horacio.lineas l JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE l.activa=true AND p.activa=true AND p.chat_id IS NOT NULL");
 
   if (b.admin === 'ping_all') {
-    let sent = 0, skip = 0;
+    let metered = 0, unmetered = 0;
     for (const L of leaders) {
-      if (L.plan == null) { skip++; continue; } // NUNCA inventar meta
-      const plan = Number(L.plan);
+      const plan = (L.plan == null) ? null : Number(L.plan); // NUNCA inventar meta
       // cerrar hueco: sesión abierta de un slot anterior => sin_dato
       const s = await pg(`SELECT step, data FROM horacio.sesiones WHERE chat_id=${L.chat_id}`);
       if (s && s.length) {
         const d0 = (typeof s[0].data === 'string') ? JSON.parse(s[0].data) : s[0].data;
-        const open = ['hxh_meta', 'hxh_piezas', 'hxh_causa'].includes(s[0].step);
+        const open = ['hxh_meta', 'hxh_piezas', 'hxh_causa', 'hxh_real'].includes(s[0].step);
         if (open && d0 && d0.slot && d0.slot !== slot) {
-          await pg(`INSERT INTO horacio.hora_por_hora(linea_id,fecha,hora_slot,plan,sin_dato,reporto_chat_id) VALUES('${L.linea_id}','${d0.fecha || fecha}','${d0.slot}',${d0.plan || 'NULL'},true,${L.chat_id})`);
+          await pg(`INSERT INTO horacio.hora_por_hora(linea_id,fecha,hora_slot,plan,sin_dato,reporto_chat_id) VALUES('${L.linea_id}','${d0.fecha || fecha}','${d0.slot}',${(d0.plan != null) ? d0.plan : 'NULL'},true,${L.chat_id})`);
         }
       }
-      const d = { linea_id: L.linea_id, plan, fecha, slot, reminded: false };
-      await pg(`INSERT INTO horacio.sesiones(chat_id,flujo,step,data,updated_at) VALUES(${L.chat_id},'hxh','hxh_meta','${esc(JSON.stringify(d))}'::jsonb,now()) ON CONFLICT(chat_id) DO UPDATE SET flujo='hxh', step='hxh_meta', data=EXCLUDED.data, updated_at=now()`);
-      await tg('sendMessage', { chat_id: L.chat_id, text: `¿Cómo vamos? ${L.nombre}, ${slot}: ¿salió la meta (${plan})?`, reply_markup: { inline_keyboard: [[{ text: '✅ Sí', callback_data: 'hxh_si' }, { text: '❌ Faltó', callback_data: 'hxh_no' }]] } });
-      sent++;
+      if (plan != null) {
+        const d = { linea_id: L.linea_id, plan, fecha, slot, reminded: false };
+        await pg(`INSERT INTO horacio.sesiones(chat_id,flujo,step,data,updated_at) VALUES(${L.chat_id},'hxh','hxh_meta','${esc(JSON.stringify(d))}'::jsonb,now()) ON CONFLICT(chat_id) DO UPDATE SET flujo='hxh', step='hxh_meta', data=EXCLUDED.data, updated_at=now()`);
+        await tg('sendMessage', { chat_id: L.chat_id, text: `¿Cómo vamos? ${L.nombre}, ${slot}: ¿salió la meta (${plan})?`, reply_markup: { inline_keyboard: [[{ text: '✅ Sí', callback_data: 'hxh_si' }, { text: '❌ Faltó', callback_data: 'hxh_no' }]] } });
+        metered++;
+      } else {
+        const d = { linea_id: L.linea_id, plan: null, fecha, slot, reminded: false };
+        await pg(`INSERT INTO horacio.sesiones(chat_id,flujo,step,data,updated_at) VALUES(${L.chat_id},'hxh','hxh_real','${esc(JSON.stringify(d))}'::jsonb,now()) ON CONFLICT(chat_id) DO UPDATE SET flujo='hxh', step='hxh_real', data=EXCLUDED.data, updated_at=now()`);
+        await tg('sendMessage', { chat_id: L.chat_id, text: `¿Cómo vamos? ${L.nombre}, ${slot}: ¿cuántas piezas salieron? Escríbeme el número.` });
+        unmetered++;
+      }
     }
-    return [{ json: { admin: 'ping_all', sent, skip } }];
+    return [{ json: { admin: 'ping_all', metered, unmetered } }];
   }
 
   if (b.admin === 'reminder_all') {
@@ -58,10 +64,11 @@ if (b && b.admin) {
       const s = await pg(`SELECT step, data FROM horacio.sesiones WHERE chat_id=${L.chat_id}`);
       if (!s || !s.length) continue;
       const d = (typeof s[0].data === 'string') ? JSON.parse(s[0].data) : s[0].data;
-      if (s[0].step === 'hxh_meta' && d && d.slot === slot && !d.reminded) {
+      if (['hxh_meta', 'hxh_real'].includes(s[0].step) && d && d.slot === slot && !d.reminded) {
         d.reminded = true;
         await pg(`UPDATE horacio.sesiones SET data='${esc(JSON.stringify(d))}'::jsonb, updated_at=now() WHERE chat_id=${L.chat_id}`);
-        await tg('sendMessage', { chat_id: L.chat_id, text: `Cuando puedas, ${L.nombre} ${slot}: ¿salió la meta? Es rápido 🙏`, reply_markup: { inline_keyboard: [[{ text: '✅ Sí', callback_data: 'hxh_si' }, { text: '❌ Faltó', callback_data: 'hxh_no' }]] } });
+        if (s[0].step === 'hxh_meta') await tg('sendMessage', { chat_id: L.chat_id, text: `Cuando puedas, ${L.nombre} ${slot}: ¿salió la meta? Es rápido 🙏`, reply_markup: { inline_keyboard: [[{ text: '✅ Sí', callback_data: 'hxh_si' }, { text: '❌ Faltó', callback_data: 'hxh_no' }]] } });
+        else await tg('sendMessage', { chat_id: L.chat_id, text: `Cuando puedas, ${L.nombre} ${slot}: ¿cuántas piezas salieron? Solo el número 🙏` });
         rem++;
       }
     }
@@ -289,11 +296,16 @@ if (action === 'cack') {
 
 // ---- HxH ----
 if (action === 'ping') {
-  const r = await pg("SELECT l.id AS linea_id, e.piezas_hora FROM horacio.lineas l JOIN horacio.estandares e ON e.linea_id=l.id WHERE l.codigo='SMT520' AND e.vigente=true LIMIT 1");
-  const linea_id = r[0].linea_id, plan = Number(r[0].piezas_hora);
+  const r = await pg("SELECT l.id AS linea_id, l.nombre, e.piezas_hora FROM horacio.lineas l LEFT JOIN horacio.estandares e ON e.linea_id=l.id AND e.vigente=true WHERE l.codigo='SMT' LIMIT 1");
+  const linea_id = r[0].linea_id, plan = r[0].piezas_hora != null ? Number(r[0].piezas_hora) : null, lnombre = r[0].nombre;
   const now = nowMX(); const fecha = now.toFormat('yyyy-LL-dd'); const slot = now.toFormat('HH:00');
-  await setSess('hxh', 'hxh_meta', { linea_id, plan, fecha, slot });
-  await tg('sendMessage', { chat_id, text: `¿Cómo vamos, Viri? SMT 520, ${slot}: ¿salió la meta (${plan})?`, reply_markup: { inline_keyboard: [[{ text: '✅ Sí', callback_data: 'hxh_si' }, { text: '❌ Faltó', callback_data: 'hxh_no' }]] } });
+  if (plan != null) {
+    await setSess('hxh', 'hxh_meta', { linea_id, plan, fecha, slot });
+    await tg('sendMessage', { chat_id, text: `¿Cómo vamos? ${lnombre}, ${slot}: ¿salió la meta (${plan})?`, reply_markup: { inline_keyboard: [[{ text: '✅ Sí', callback_data: 'hxh_si' }, { text: '❌ Faltó', callback_data: 'hxh_no' }]] } });
+  } else {
+    await setSess('hxh', 'hxh_real', { linea_id, plan: null, fecha, slot });
+    await tg('sendMessage', { chat_id, text: `¿Cómo vamos? ${lnombre}, ${slot}: ¿cuántas piezas salieron? Escríbeme el número.` });
+  }
   return [{ json: { action } }];
 }
 if (action === 'si') {
@@ -342,6 +354,14 @@ if (action === 'causa') {
 // ---- ENTRADA LIBRE (texto/foto) según sesión activa ----
 if (action === 'ignore' && msg && (text || photo)) {
   const s = await readSess();
+  if (s && s.step === 'hxh_real') {
+    const n = parseInt(String(text || '').replace(/[^0-9]/g, ''), 10);
+    if (isNaN(n)) { await tg('sendMessage', { chat_id, text: 'Mándame solo el número de piezas que salieron 🙏' }); return [{ json: { action: 'hxh_real_bad' } }]; }
+    await pg(`INSERT INTO horacio.hora_por_hora(linea_id,fecha,hora_slot,real,t_productivo_min,reporto_chat_id) VALUES('${s.d.linea_id}','${s.d.fecha}','${s.d.slot}',${n},60,${chat_id})`);
+    await setSess('hxh', 'idle', s.d);
+    await tg('sendMessage', { chat_id, text: `Va, anotado 👍 ${n} piezas (${s.d.slot}). Gracias.` });
+    return [{ json: { action: 'hxh_real' } }];
+  }
   if (s && s.step === 'falt_parte') {
     const np = text ? esc(text.trim()) : null;
     const fid = photo ? esc(photo) : null;

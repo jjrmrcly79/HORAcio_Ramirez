@@ -37,17 +37,18 @@ flowchart TD
 
 Tres líderes de operación. Los pizarrones HxH pertenecen a estas estaciones; **"Andromeda" es una tarjeta (NP 22SD72916-06), no una línea**.
 
-| Proceso / Estación | Líder | Jefe directo |
-|---|---|---|
-| SMT (colocación/hornos) — líneas 411/481 y 520 | **Viridiana Escalona** ("Viri") | Daniel Nava |
-| PTH (inserción manual) | **Yadira Magdariaga** | Daniel Nava |
-| Máquina de ola | **Yadira Magdariaga** | Daniel Nava |
-| Soldadura manual / retrabajo | **Yadira Magdariaga** | Daniel Nava |
-| Inspección visual / Calidad | área de Calidad (Marco Sotelo / Carolina Valencia) | — |
-| Pruebas ICT/FCT | #revisar | Daniel Nava |
-| Conformal | **Líder Conformal y Producto Terminado** — nombre por identificar #revisar | Daniel Nava |
-| Armado de arneses | #revisar | Daniel Nava |
-| Kitting / surtido almacén | **Lidia Pérez** | Nayeli Hernández |
+| Proceso / Estación                             | Líder                                                   | Jefe directo     |
+| ---------------------------------------------- | ------------------------------------------------------- | ---------------- |
+| SMT (colocación/hornos) — líneas 411/481 y 520 | **Viridiana Escalona** ("Viri")                         | Daniel Nava      |
+| PTH (inserción manual)                         | **Yadira Magdariaga**                                   | Daniel Nava      |
+| Máquina de ola                                 | **Yadira Magdariaga**                                   | Daniel Nava      |
+| Soldadura manual / retrabajo                   | **Yadira Magdariaga**                                   | Daniel Nava      |
+| Inspección visual / Calidad                    | área de Calidad (Marco Sotelo / Carolina Valencia)      | —                |
+| Pruebas ICT/FCT                                | **Yadira Magdariaga**                                   | Daniel Nava      |
+| Conformal                                      | **Líder Conformal y Producto Terminado** — Rocio (Chio) | Daniel Nava      |
+| Armado de arneses                              | Rocio (Chio)                                            | Daniel Nava      |
+| Kitting / surtido almacén                      | **Lidia Pérez**                                         | Nayeli Hernández |
+|                                                |                                                         |                  |
 
 > Para el piloto Horacio: **Pamela Ramírez** define qué líneas/estaciones entran y confirma nombres el día uno. Avances de producción: las líderes entregan cajas a **Brenda Medina** (Embarques), quien captura contra OT en sistema.
 

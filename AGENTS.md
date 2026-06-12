@@ -65,8 +65,28 @@ Fuente de verdad operativa (lo que n8n lee): tablas `horacio.*` en Supabase.
 5. **Activar** el workflow `Horacio - Scheduler` en la UI de n8n. ← esto enciende los pings.
    (Hoy hay 5 altas apuntando al chat de prueba 5367409334 para demo.)
 
+### ✅ Modelo real de líneas + organigrama (2026-06-12, `sql/003`)
+Corrección: los pizarrones HxH son **procesos**, no áreas; "Andromeda" es una
+**tarjeta** (NP 22SD72916-06), no una línea. Líneas del piloto:
+| Código | Línea | Líder | Estándar |
+|---|---|---|---|
+| SMT | SMT | Viridiana Escalona | TJ000360 = 102/hr (oficial) |
+| PTH | PTH (inserción manual + ola, **cuello**) | Yadira Magdariaga | por validar |
+| CONFORMAL | Conformal | por identificar #revisar | por validar |
+| OTROS | Otros (empaque y arneses) | por identificar #revisar | por validar |
+
+Dueños de escalamiento (nombres completos): Daniel Nava (paros), **Nayeli Hernández**
+(faltantes), Marco Sotelo (calidad), **Juan Carlos Martínez "JC"** (mantenimiento),
+**Jorge Ramírez** (dirección). Fuente: `Horacio - Organigrama General.md`.
+
+**HxH sin estándar (PTH/Conformal/Otros):** el ping pregunta "¿cuántas piezas
+salieron?" (step `hxh_real`) y la líder escribe el número → se guarda `real` con
+`plan=null`. Horacio NUNCA inventa meta. SMT (con estándar) usa ✅/❌ contra los 102.
+
 ### ⏳ Siguientes (post día-uno)
-- [ ] Estándares reales de CIL3 / Andromeda + líderes (datos #revisar)
+- [ ] Estándar oficial de PTH/ola (ciclo 294 s/pasada → pzs/hr) con Ingeniería
+- [ ] Identificar líder Conformal y Producto Terminado (#revisar)
+- [ ] Estándar por modelo (SMT corre varios modelos; hoy solo TJ000360)
 - [ ] Scheduler pings horarios (7:35–15:35) + recordatorio 15 min
 - [ ] Resumen líder 15:40 + resumen Dirección 17:00 (LLM)
 - [ ] Datos `#revisar`: líderes CIL3/Andromeda, 2 líneas con Pamela, estándar Andromeda
