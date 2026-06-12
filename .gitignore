@@ -1,0 +1,7 @@
+.env
+.env.*
+*.local
+node_modules/
+.DS_Store
+/tmp/
+# Los secretos (BOT_TOKEN, SERVICE_ROLE_KEY) viven en el nodo n8n, nunca en el repo.
