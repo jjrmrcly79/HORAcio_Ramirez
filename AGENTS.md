@@ -67,9 +67,20 @@ mismo `askArea()`. Causa raíz del bug: Nayeli (materiales) hizo `/start` y le p
 "SMT o PTH" — no completó, BD quedó limpia (nada que corregir manual).
 Ref: `n8n/horacio-bot.code.js` (acciones `start`/`reg_linea`/`reg_area`/`dueno` + helpers `askLine`/`askArea`).
 
+### ✅ Receptores de "solo resumen del día" (2026-06-12)
+Nueva área en `/start → 🔔` y `/dueno`: **"📊 Solo recibir resumen del día"** (rol
+`resumen`). Para gente que no reporta nada y solo lee el consolidado: Pamela, Ivonne,
+NexIA. Cada quien se registra con su nombre de Telegram (no se pre-siembran). El
+`resumen_dir` (17:00) dejó de mandar a uno solo: ahora envía a **todos** los
+`rol IN ('direccion','resumen')` con chat_id (semáforo por línea, sin nombres de
+operadoras). Jorge (direccion) lo sigue recibiendo. Envío con try/catch por
+destinatario (un fallo no frena a los demás).
+Ref: `n8n/horacio-bot.code.js` (`askArea` opción resumen · `rol_pick` msg a medida · admin `resumen_dir` loop).
+
 ### 🔌 Encendido para el piloto (R2-07) — checklist
 1. Cada **líder** hace `/start` → 📋 línea → elige su línea (auto-registro).
 2. Cada **dueño** hace `/start` → 🔔 área → elige su área (o `/dueno` directo).
+3. **Receptores de resumen** (Pamela/Ivonne/NexIA): `/start` → 🔔 → 📊 Solo resumen.
 3. Confirmar **SLAs firmados** (Daniel Nava, Nayeli).
 4. (Opcional) resetear altas de prueba: `UPDATE horacio.personas SET chat_id=NULL, consentimiento=false;`
 5. **Activar** el workflow `Horacio - Scheduler` en la UI de n8n. ← esto enciende los pings.

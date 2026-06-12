@@ -96,8 +96,8 @@ if (b && b.admin) {
   }
 
   if (b.admin === 'resumen_dir') {
-    const dir = await pg("SELECT chat_id, nombre FROM horacio.personas WHERE rol='direccion' AND chat_id IS NOT NULL AND activa LIMIT 1");
-    if (!dir || !dir.length) return [{ json: { admin: 'resumen_dir', skip: 'sin direccion' } }];
+    const recips = await pg("SELECT chat_id, nombre FROM horacio.personas WHERE rol IN ('direccion','resumen') AND chat_id IS NOT NULL AND activa");
+    if (!recips || !recips.length) return [{ json: { admin: 'resumen_dir', skip: 'sin destinatarios' } }];
     const lineas = await pg("SELECT id, nombre FROM horacio.lineas WHERE activa=true ORDER BY codigo");
     let blocks = [];
     for (const L of lineas) {
@@ -111,8 +111,8 @@ if (b && b.admin) {
       blocks.push(`${sem} ${L.nombre}: ${R}/${P}${pct != null ? ' (' + pct + '%)' : ''} · paros ${paros[0].n} (${paros[0].min}m) · faltantes ${falt[0].ab}${agg[0].sd ? ' · ' + agg[0].sd + ' sin dato' : ''}`);
     }
     const txt = `📊 Resumen del día — ${fecha}\n\n${blocks.join('\n') || '(sin actividad registrada)'}\n\n— Horacio`;
-    await tg('sendMessage', { chat_id: dir[0].chat_id, text: txt });
-    return [{ json: { admin: 'resumen_dir', lineas: blocks.length } }];
+    for (const r of recips) { try { await tg('sendMessage', { chat_id: r.chat_id, text: txt }); } catch (e) {} }
+    return [{ json: { admin: 'resumen_dir', lineas: blocks.length, recips: recips.length } }];
   }
   return [{ json: { ok: false, error: 'unknown admin' } }];
 }
@@ -153,7 +153,7 @@ const askLine = async () => {
   await tg('sendMessage', { chat_id, text: `Va. ¿Qué línea llevas, ${esc(tgname)}?`, reply_markup: { inline_keyboard: rows } });
 };
 const askArea = async () => {
-  const roles = [['paros', 'Paros (Daniel)'], ['faltantes', 'Materiales / Faltantes (Nayeli)'], ['calidad', 'Calidad (Marco)'], ['mantenimiento', 'Mantenimiento (JC)'], ['direccion', 'Dirección (Jorge)']];
+  const roles = [['paros', 'Paros (Daniel)'], ['faltantes', 'Materiales / Faltantes (Nayeli)'], ['calidad', 'Calidad (Marco)'], ['mantenimiento', 'Mantenimiento (JC)'], ['direccion', 'Dirección (Jorge)'], ['resumen', '📊 Solo recibir resumen del día']];
   const rows = roles.map((r) => [{ text: r[1], callback_data: 'rol_' + r[0] }]);
   await tg('sendMessage', { chat_id, text: '¿Qué área cubres? (recibirás los avisos de esa área)', reply_markup: { inline_keyboard: rows } });
 };
@@ -213,7 +213,10 @@ if (action === 'rol_pick') {
   const ex = await pg(`SELECT id FROM horacio.personas WHERE rol='${esc(rol)}' AND chat_id IS NULL ORDER BY created_at LIMIT 1`);
   if (ex && ex.length) await pg(`UPDATE horacio.personas SET chat_id=${chat_id}, consentimiento=true WHERE id='${ex[0].id}'`);
   else await pg(`INSERT INTO horacio.personas(nombre,rol,chat_id,consentimiento,activa) VALUES('${esc(tgname)}','${esc(rol)}',${chat_id},true,true)`);
-  await tg('sendMessage', { chat_id, text: `Listo, ${esc(tgname)}. Te aviso lo de ${esc(rol)} en cuanto pase algo. Gracias 🙏` });
+  const okTxt = (rol === 'resumen')
+    ? `Listo, ${esc(tgname)}. Cada día a las 17:00 te mando el resumen del día (por línea, sin nombres). Gracias 🙏`
+    : `Listo, ${esc(tgname)}. Te aviso lo de ${esc(rol)} en cuanto pase algo. Gracias 🙏`;
+  await tg('sendMessage', { chat_id, text: okTxt });
   return [{ json: { action } }];
 }
 if (action === 'menu') { await menu(); return [{ json: { action } }]; }
