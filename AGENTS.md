@@ -43,8 +43,30 @@ Fuente de verdad operativa (lo que n8n lee): tablas `horacio.*` en Supabase.
   tras responder (evita filas duplicadas por doble-tap).
 - Probado end-to-end: alta líder+dueño, paro MAQ→JC, acuse, cierre (duración OK).
 
-### ⏳ Pendientes (siguientes fases)
-- [ ] Faltantes (conversacional + foto) + Nayeli · Calidad + Marco Sotelo
+### ✅ Día Uno — Faltantes + Calidad + Scheduler + Resúmenes (2026-06-12)
+- **Faltantes:** /menu → 📦 → NP por texto o **foto** (file_id) → escala a `faltantes`
+  con botones [Visto 👍][✅ Surtido] → cierra loop a la líder ("ya se surtió").
+- **Calidad:** /menu → 🔎 → descripción texto → escala a `calidad` [Visto].
+- **Funciones admin** (en el mismo nodo Code, gated por `ADMIN_SECRET` en el body):
+  `ping_all` (cierra huecos como sin_dato + pinguea líneas con estándar), `reminder_all`
+  (1 recordatorio a no-respondidos del slot), `resumen_lider`, `resumen_dir` (semáforo
+  🟢≥95% 🟡≥80% 🔴<80%, sin nombres de operadoras). Resúmenes por **plantilla** (sin LLM).
+- **Workflow `Horacio - Scheduler`** (id `ilJpIucqEBpKnFgT`, **INACTIVO**) — 4 cron L–V
+  (TZ MX) → HTTP al webhook del bot:
+  - Ping `35 7-15 * * 1-5` · Recordatorio `50 7-15 * * 1-5`
+  - Resumen líder `40 15 * * 1-5` · Resumen Dirección `0 17 * * 1-5`
+- Probado end-to-end (faltante, calidad, ping_all, resumen_lider, resumen_dir).
+
+### 🔌 Encendido para el piloto (R2-07) — checklist
+1. Cada **líder** hace `/start` al bot y elige su línea (auto-registro).
+2. Cada **dueño** (paros/faltantes/calidad/mantenimiento/dirección) hace `/dueno`.
+3. Confirmar **SLAs firmados** (Daniel Nava, Nayeli).
+4. (Opcional) resetear altas de prueba: `UPDATE horacio.personas SET chat_id=NULL, consentimiento=false;`
+5. **Activar** el workflow `Horacio - Scheduler` en la UI de n8n. ← esto enciende los pings.
+   (Hoy hay 5 altas apuntando al chat de prueba 5367409334 para demo.)
+
+### ⏳ Siguientes (post día-uno)
+- [ ] Estándares reales de CIL3 / Andromeda + líderes (datos #revisar)
 - [ ] Scheduler pings horarios (7:35–15:35) + recordatorio 15 min
 - [ ] Resumen líder 15:40 + resumen Dirección 17:00 (LLM)
 - [ ] Datos `#revisar`: líderes CIL3/Andromeda, 2 líneas con Pamela, estándar Andromeda

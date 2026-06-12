@@ -29,12 +29,22 @@ version: 0.1
 
 ## Líneas del piloto
 
-| Línea | Líder (piloto) | Estándar | Estatus estándar |
-|---|---|---|---|
-| SMT 520 | Viridiana Escalona ("Viri") | Por modelo — ej. TJ000360: 102 tarjetas/hr | ✅ Oficial (formato FPR01.F) |
-| CIL3 1V4 | (identificar líder) #revisar | Variable por hora, prorrateado | ⚠️ Criterio de llenado no estándar #revisar |
-| Andromeda | (identificar líder) #revisar | Pizarrón maneja 85–170/hr | ❌ SIN estándar oficial — "estándar por validar" #dato-faltante |
-| + 2 líneas por definir con Pamela | Yadira + 1 | — | #revisar |
+> **Corrección 12-jun (Juan):** los pizarrones HxH no son áreas. Las operaciones/estaciones del proceso son las del catálogo de abajo, con tres líderes: **SMT → Viridiana Escalona, PTH → Yadira Magdariaga, Conformal y Producto Terminado → líder por identificar #revisar**. "Andromeda" es una **tarjeta** (NP 22SD72916-06 / familia P/refrigerador), no una línea: su pizarrón es el HxH del área donde corre esa tarjeta. Ver [[Horacio - Organigrama General]].
+
+| Proceso / Estación                             | Líder responsable                               | Estándar conocido                                            | Estatus estándar                            |
+| ---------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------- |
+| SMT (colocación/hornos) — líneas 411/481 y 520 | Viridiana Escalona ("Viri")                     | Por modelo — ej. tarjeta TJ000360: 102/hr (pizarrón SMT 520) | ✅ Oficial (formato FPR01.F)                 |
+| PTH (inserción manual)                         | Yadira Magdariaga                               | TJ000360 en pizarrón CIL3 1V4: variable/prorrateado          | ⚠️ Criterio de llenado no estándar #revisar |
+| Máquina de ola                                 | Yadira Magdariaga                               | Ciclo medido: 294 s/pasada (tarjeta Andromeda)               | #baseline; falta pzs/hr                     |
+| Soldadura manual / retrabajo                   | Yadira Magdariaga                               | "caben 50" por operadora (dicho de líder) #revisar           | ❌ Sin oficial                               |
+| Inspección visual / Calidad                    | (Calidad — Marco Sotelo)                        | —                                                            | #dato-faltante                              |
+| Pruebas ICT/FCT                                | Yadira Magdariaga                               | —                                                            | #dato-faltante                              |
+| Conformal                                      | Líder Conformal y PT (por identificar #revisar) | —                                                            | #dato-faltante                              |
+| Armado de arneses                              | #revisar                                        | —                                                            | #dato-faltante                              |
+| Kitting / surtido almacén                      | Lidia Pérez (almacén)                           | —                                                            | —                                           |
+
+> Tarjetas observadas en pizarrones HxH: TJ000360 (SMT 520 a 102/hr y CIL3 1V4 prorrateado) y **Andromeda** 22SD72916-06 (85–170/hr **sin estándar oficial**, origen por validar con Ingeniería #dato-faltante).
+> Líneas del piloto Horacio: por definir con Pamela Ramírez #revisar.
 
 ## Regla de prorrateo (la que ya usa el piso)
 
