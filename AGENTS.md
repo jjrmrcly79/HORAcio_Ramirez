@@ -103,6 +103,37 @@ Dueños de escalamiento (nombres completos): Daniel Nava (paros), **Nayeli Hern�
 salieron?" (step `hxh_real`) y la líder escribe el número → se guarda `real` con
 `plan=null`. Horacio NUNCA inventa meta. SMT (con estándar) usa ✅/❌ contra los 102.
 
+### ✅ Tableros HxH por líder + ping multi-tablero (2026-06-12, sql/004+005)
+Corrección de modelo: **una líder lleva VARIOS tableros HxH**, no "1 línea = 1 líder".
+`horacio.lineas` ahora significa "tablero HxH" (+ columnas `grupo`, `orden`). 7 tableros:
+| grupo | tablero | líder | estándar |
+|---|---|---|---|
+| SMT | SMT 411&481 · **SMT 520** | Viridiana | 520 = 102/hr oficial; 411&481 piezas |
+| PTH | PTH · Ola · Soldeo · ICT/FCT · **Conformal (Yadira)** | Yadira | piezas (por validar) |
+| CONFORMAL | **Conformal (Rocío)** | Rocío (Chío) | piezas (por validar) |
+
+> Hay **dos** líneas de Conformal (sql/006): una de Yadira (parte de su flujo PTH) y
+> otra de Rocío (Chío), líder aparte. Son tableros distintos, cada uno con su líder.
+
+- **Ping multi-tablero:** `ping_all` manda **un solo mensaje por líder** con un botón
+  por tablero (`hxhb_<linea_id>`); al tocar reporta (✅/❌ si hay estándar, o número si
+  no) y vuelve al menú marcando progreso; cierra al completar todos. Step nuevo
+  `hxh_menu` (requirió ampliar `sesiones_step_check`, sql/005). Sesión guarda
+  `{fecha,slot,boards[],done[],cur}`. Huecos del slot anterior → `sin_dato` por tablero.
+- **Paros/faltantes/calidad:** si la líder tiene >1 tablero, primero pregunta
+  **"¿en qué tablero?"** (`brd_<flujo>_<id>`); con 1 tablero arranca directo.
+- **Resumen líder:** una línea por tablero (suyo); con estándar `R/P (%)`, sin estándar
+  `N pzs`. **Resumen Dirección:** agrupado por SMT/PTH, semáforo solo si hay meta
+  (⚪ + piezas si no), y **nunca omite un tablero que produjo** (fix del `/0`).
+- Reúso de filas existentes en la migración (preserva el estándar y FKs); Conformal
+  reasignado a Yadira. Probado end-to-end vía webhook (Viri ✅/❌/sin-estándar, Yadira
+  5 tableros, selector de paro, resumen_dir) repuntando al chat de prueba y restaurando.
+
+**Altas reales (12-jun, en vivo desde el piso con el `/start` nuevo):** Viridiana
+(SMT), Yadira (PTH), **Rocío (Conformal propio)**, Daniel Nava (paros), Marco Sotelo
+(calidad) — todas con `consentimiento=true`. Faltan: Nayeli (faltantes), JC
+(mantenimiento), Jorge (dirección).
+
 ### ⏳ Siguientes (post día-uno)
 - [ ] Estándar oficial de PTH/ola (ciclo 294 s/pasada → pzs/hr) con Ingeniería
 - [ ] Estándar oficial de Conformal (hoy "por validar")
