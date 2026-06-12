@@ -30,10 +30,20 @@ Fuente de verdad operativa (lo que n8n lee): tablas `horacio.*` en Supabase.
 - **Probado end-to-end** (simulado + taps reales): plan/real/causa/timestamp correctos
 - Chat de prueba: `5367409334` (Juan). Líderes reales NO dados de alta (gate R2-07).
 
+### ✅ Fase 2 — Alta auto-registro + Paros (2026-06-11)
+- Nodo Code renombrado a **`Horacio Bot`**; fuente: `n8n/horacio-bot.code.js`
+  (se sube por API REST con `scripts`/Python sustituyendo secretos)
+- **Alta auto-registro:** `/start` → botones de línea → liga `chat_id` a la línea
+  (actualiza la persona sembrada, p.ej. Viri en SMT520). `/dueno` → botones de rol →
+  liga `chat_id` al dueño de escalamiento. `consentimiento=true`.
+- **Paros:** `/menu` → 🛑 Reportar paro → causa → INSERT `paros` → escala al dueño
+  por `causa.escala_a` (rol→persona con chat_id) con botón "Visto 👍" → confirma a líder
+  con botón "✅ Ya quedó". Acuse → avisa a líder. Cierre → `duracion_min`.
+- **Fix Fase 1:** guards por `step` + `editMessageReplyMarkup` para quitar botones
+  tras responder (evita filas duplicadas por doble-tap).
+- Probado end-to-end: alta líder+dueño, paro MAQ→JC, acuse, cierre (duración OK).
+
 ### ⏳ Pendientes (siguientes fases)
-- [ ] **Guard de step** en handler de causa + quitar botones tras responder
-      (evita filas duplicadas por doble-tap) — refinamiento Fase 1
-- [ ] Paros (abrir/cerrar + duración) + escalamiento a Daniel Nava + acuse
 - [ ] Faltantes (conversacional + foto) + Nayeli · Calidad + Marco Sotelo
 - [ ] Scheduler pings horarios (7:35–15:35) + recordatorio 15 min
 - [ ] Resumen líder 15:40 + resumen Dirección 17:00 (LLM)
