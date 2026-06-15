@@ -76,10 +76,10 @@ if (q.data !== '1') {
 '      kpi(k.calAbiertos,"Calidad abierta")+',
 '      kpi((k.acuseMin==null?"—":k.acuseMin+" min"),"Acuse prom. (7d)");',
 '    var ht="";d.tableros.forEach(function(t){var p=t.pct==null?(t.real+" pzs"):(t.real+"/"+t.plan+" "+t.pct+"%");',
-'      ht+="<div class=\\"tab\\"><div>"+t.sem+" <b>"+t.nombre+"</b><div class=\\"muted\\">"+t.grupo+" · última "+(t.ultima||"—")+(t.sd?" · "+t.sd+" sin dato":"")+"</div></div><div style=\\"text-align:right\\">"+p+"</div></div>"});',
+'      ht+="<div class=\\"tab\\"><div>"+t.sem+" <b>"+t.nombre+"</b><div class=\\"muted\\">"+t.grupo+" · hora reportada "+(t.ultima||"—")+(t.sd?" · "+t.sd+" sin dato":"")+"</div></div><div style=\\"text-align:right\\">"+p+"</div></div>"});',
 '    document.getElementById("tableros").innerHTML=ht||"<div class=\\"empty\\">Sin datos hoy</div>";',
 '    var hh="";d.lideres.forEach(function(l){var pc=l.pct==null?0:l.pct;var c=pc>=80?"var(--ok)":pc>=50?"var(--warn)":"var(--bad)";',
-'      hh+="<div class=\\"tab\\"><div><b>"+l.nombre+"</b><div class=\\"bar\\"><i style=\\"width:"+Math.min(pc,100)+"%;background:"+c+"\\"></i></div></div><div style=\\"text-align:right\\">"+l.reportados+"/"+l.esperados+"<div class=\\"muted\\">últ "+hhmm(l.ultima)+"</div></div></div>"});',
+'      hh+="<div class=\\"tab\\"><div><b>"+l.nombre+"</b><div class=\\"bar\\"><i style=\\"width:"+Math.min(pc,100)+"%;background:"+c+"\\"></i></div></div><div style=\\"text-align:right\\">"+l.reportados+"/"+l.esperados+"<div class=\\"muted\\">captura "+(l.ultima||"—")+"</div></div></div>"});',
 '    document.getElementById("hb").innerHTML=hh||"<div class=\\"empty\\">Sin líderes</div>";',
 '    if(d.escalamientos.length){var et="<table><tr><th>Tipo</th><th>Tablero</th><th>Detalle</th><th>A</th><th>Hace</th><th>Acuse</th></tr>";',
 '      d.escalamientos.forEach(function(e){et+="<tr><td><span class=\\"pill t-"+e.tipo+"\\">"+e.tipo+"</span></td><td>"+e.tablero+"</td><td>"+(e.detalle||"")+"</td><td>"+(e.quien||"—")+"</td><td>"+e.haceMin+" min</td><td>"+(e.acuse?"✅":"⏳")+"</td></tr>"});',
@@ -120,7 +120,8 @@ const K = kp[0] || {};
 const hb = await pg(`SELECT p.nombre, COUNT(l.id)::int AS nboards, COUNT(h.*) FILTER (WHERE NOT h.sin_dato)::int AS reportes, MAX(h.ts) FILTER (WHERE NOT h.sin_dato) AS ultima FROM horacio.personas p JOIN horacio.lineas l ON l.lider_persona_id=p.id AND l.activa LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE p.chat_id IS NOT NULL GROUP BY p.id, p.nombre ORDER BY p.nombre`);
 const lideres = hb.map((r) => {
   const esp = (Number(r.nboards) || 0) * expectedSlots, rep = Number(r.reportes) || 0;
-  return { nombre: r.nombre, reportados: rep, esperados: esp, pct: esp > 0 ? Math.round(rep / esp * 100) : null, ultima: r.ultima || null };
+  const ult = r.ultima ? DateTime.fromSQL(r.ultima).setZone('America/Mexico_City').toFormat('HH:mm') : null; // hora MX de captura
+  return { nombre: r.nombre, reportados: rep, esperados: esp, pct: esp > 0 ? Math.round(rep / esp * 100) : null, ultima: ult };
 });
 
 const esc = await pg(`SELECT tipo, tablero, detalle, quien, ts, acuse_ts FROM (
