@@ -13,10 +13,28 @@ const TG = 'https://api.telegram.org/bot<BOT_TOKEN>';
 const PG = 'https://supabase.nexiasoluciones.com.mx/pg/query';
 const SK = '<SERVICE_ROLE_KEY>';
 const ADMIN_SECRET = '<ADMIN_SECRET>';
+const VALIDATOR = 5367409334; // chat ESPEJO: recibe copia de TODO para validar el piloto (poner null para apagar)
 const pgh = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 const H = this.helpers;
 const pg = async (q) => await H.httpRequest({ method: 'POST', url: PG, headers: pgh, body: { query: q }, json: true });
-const tg = async (m, p) => await H.httpRequest({ method: 'POST', url: TG + '/' + m, body: p, json: true });
+const tgRaw = async (m, p) => await H.httpRequest({ method: 'POST', url: TG + '/' + m, body: p, json: true });
+let _names = null;
+const whoIs = async (cid) => {
+  if (!_names) { _names = {}; try { const r = await pg("SELECT chat_id, nombre, rol FROM horacio.personas WHERE chat_id IS NOT NULL"); for (const p of r) _names[p.chat_id] = p.nombre + ' (' + p.rol + ')'; } catch (e) {} }
+  return _names[cid] || ('chat ' + cid);
+};
+// tg con espejo: todo sendMessage/sendPhoto se copia al VALIDATOR (texto), salvo lo que ya va a él
+const tg = async (m, p) => {
+  const res = await tgRaw(m, p);
+  if (VALIDATOR && p && p.chat_id && p.chat_id !== VALIDATOR && (m === 'sendMessage' || m === 'sendPhoto')) {
+    try {
+      const who = await whoIs(p.chat_id);
+      const cuerpo = (m === 'sendPhoto') ? ('📷 ' + (p.caption || '')) : (p.text || '');
+      await tgRaw('sendMessage', { chat_id: VALIDATOR, text: '👁️ [→ ' + who + ']\n' + cuerpo });
+    } catch (e) {}
+  }
+  return res;
+};
 const esc = (s) => String(s == null ? '' : s).replace(/'/g, "''");
 const rmKb = async (chat, mid) => { if (!mid) return; try { await tg('editMessageReplyMarkup', { chat_id: chat, message_id: mid, reply_markup: { inline_keyboard: [] } }); } catch (e) {} };
 const nowMX = () => DateTime.now().setZone('America/Mexico_City');
@@ -66,6 +84,34 @@ if (b && b.admin) {
       pinged++;
     }
     return [{ json: { admin: 'ping_all', pinged } }];
+  }
+
+  if (b.admin === 'catchup') {
+    // Recuperar las primeras horas: una botonera por hora, en fila (auto-avanza).
+    // body: { slots:["07:00",...] }  o  { from:7 } (default 7 → hasta el slot recién cerrado)
+    //       opcional: { only_chat:<id> } para una sola líder · { intro:"..." }
+    let slots = Array.isArray(b.slots) && b.slots.length ? b.slots : null;
+    if (!slots) {
+      const fromH = Number.isFinite(b.from) ? b.from : 7;
+      const endH = Number(now.minus({ hours: 1 }).toFormat('HH'));
+      slots = [];
+      for (let h = fromH; h <= endH; h++) slots.push(String(h).padStart(2, '0') + ':00');
+    }
+    if (!slots.length) return [{ json: { admin: 'catchup', skip: 'sin slots' } }];
+    const intro = b.intro || 'Perdón la demora 🙏 Apenas quedó listo Horacio. Vamos a recuperar el hora por hora de la mañana — te paso hora por hora, va rapidito.';
+    let started = 0;
+    for (const P of leadersP) {
+      if (b.only_chat && String(P.chat_id) !== String(b.only_chat)) continue;
+      const B = await boardsByPid(P.pid);
+      if (!B.length) continue;
+      const d = { fecha, slot: slots[0], queue: slots.slice(1), boards: B, done: [], cur: null, reminded: false, catchup: true };
+      await pg(`INSERT INTO horacio.sesiones(chat_id,flujo,step,data,updated_at) VALUES(${P.chat_id},'hxh','hxh_menu','${esc(JSON.stringify(d))}'::jsonb,now()) ON CONFLICT(chat_id) DO UPDATE SET flujo='hxh', step='hxh_menu', data=EXCLUDED.data, updated_at=now()`);
+      await tg('sendMessage', { chat_id: P.chat_id, text: `${P.nombre}, ${intro}` });
+      const rows = B.map((x) => [{ text: x.nombre, callback_data: 'hxhb_' + x.linea_id }]);
+      await tg('sendMessage', { chat_id: P.chat_id, text: `Hora por hora de ${d.slot}${slots.length > 1 ? ` (1 de ${slots.length})` : ''} — toca cada tablero:`, reply_markup: { inline_keyboard: rows } });
+      started++;
+    }
+    return [{ json: { admin: 'catchup', started, slots } }];
   }
 
   if (b.admin === 'reminder_all') {
@@ -180,7 +226,18 @@ const askArea = async () => {
 // menú HxH: un botón por tablero pendiente; cierra cuando completa todos
 const hxhBoardMenu = async (d) => {
   const pend = d.boards.filter((x) => !d.done.includes(x.linea_id));
-  if (!pend.length) { await setSess('hxh', 'idle', d); await tg('sendMessage', { chat_id, text: `¡Listo! Quedó tu hora por hora de ${d.slot} 🙌 Gracias.` }); return; }
+  if (!pend.length) {
+    if (Array.isArray(d.queue) && d.queue.length) { // catch-up: pasa a la siguiente hora
+      d.slot = d.queue.shift(); d.done = []; d.cur = null;
+      await setSess('hxh', 'hxh_menu', d);
+      const rows2 = d.boards.map((x) => [{ text: x.nombre, callback_data: 'hxhb_' + x.linea_id }]);
+      await tg('sendMessage', { chat_id, text: `Ahora la hora ${d.slot}${d.queue.length ? ` (faltan ${d.queue.length})` : ''}:`, reply_markup: { inline_keyboard: rows2 } });
+      return;
+    }
+    await setSess('hxh', 'idle', d);
+    await tg('sendMessage', { chat_id, text: d.catchup ? `¡Listo! Ya quedó la mañana completa 🙌 Gracias por la paciencia.` : `¡Listo! Quedó tu hora por hora de ${d.slot} 🙌 Gracias.` });
+    return;
+  }
   await setSess('hxh', 'hxh_menu', d);
   const rows = pend.map((x) => [{ text: x.nombre, callback_data: 'hxhb_' + x.linea_id }]);
   const prog = d.boards.length > 1 ? `\n(${d.done.length}/${d.boards.length} listos)` : '';

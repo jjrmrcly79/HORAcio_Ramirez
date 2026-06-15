@@ -129,10 +129,30 @@ Corrección de modelo: **una líder lleva VARIOS tableros HxH**, no "1 línea = 
   reasignado a Yadira. Probado end-to-end vía webhook (Viri ✅/❌/sin-estándar, Yadira
   5 tableros, selector de paro, resumen_dir) repuntando al chat de prueba y restaurando.
 
-**Altas reales (12-jun, en vivo desde el piso con el `/start` nuevo):** Viridiana
-(SMT), Yadira (PTH), **Rocío (Conformal propio)**, Daniel Nava (paros), Marco Sotelo
-(calidad) — todas con `consentimiento=true`. Faltan: Nayeli (faltantes), JC
-(mantenimiento), Jorge (dirección).
+**Altas reales — equipo COMPLETO (al 15-jun, en vivo con el `/start` nuevo):**
+Viridiana (SMT, chat propio 8992283238), Yadira (PTH ×5), Rocío (Conformal propio),
+Nayeli (faltantes), Marco (calidad), JC Martínez (mantenimiento), Daniel Nava (paros),
+Jorge Ramírez (dirección) — todos con `consentimiento=true`. **Scheduler ACTIVO**
+(pinguea a los :35); el piloto está EN VIVO produciendo datos.
+
+> ⚠️ Bug encontrado y corregido (12-jun): **Nayeli se había registrado como líder SMT**
+> (eligió línea en vez de área), ocupando el lugar de Viri → a Viri no le llegaba nada.
+> Detectado con `getChat` de Telegram (el chat "Viri" tenía nombre NAYELI). Se liberó
+> el lugar de Viri y se pasó a Nayeli a `faltantes`. Lección: tras un alta, verificar
+> identidad real del chat con `getChat`, no confiar en el nombre sembrado.
+
+### ✅ Catch-up de la mañana + espejo de validación (2026-06-15)
+- **Catch-up** (admin `catchup`): recupera las primeras horas perdidas. Manda 1 mensaje
+  + la botonera hora por hora **en fila** (auto-avanza al terminar cada hora hasta cerrar
+  la mañana). Body: `{slots:[...]}` o `{from:7}`; opcional `{only_chat:<id>}`,`{intro}`.
+  El avance vive en `hxhBoardMenu` (cola `d.queue`; flag `d.catchup`).
+  ⚠️ No incluir el slot que el próximo ping `:35` del Scheduler ya cubre (evita doble).
+- **Espejo de validación** (`VALIDATOR` const en el bot = chat de prueba 5367409334):
+  `tg()` copia **todo** `sendMessage`/`sendPhoto` al validador con prefijo `👁️ [→ quién]`
+  (texto; sin botones, para no disparar callbacks). Así un solo chat valida en vivo lo
+  que reciben líderes, dueños y Dirección. Poner `VALIDATOR=null` para apagar en prod.
+- **Fix:** `personas_rol_check` no permitía rol `'resumen'` (sql/007) → las altas de
+  receptores de resumen (Pamela/Ivonne/NexIA) fallaban con 23514. Corregido.
 
 ### ⏳ Siguientes (post día-uno)
 - [ ] Estándar oficial de PTH/ola (ciclo 294 s/pasada → pzs/hr) con Ingeniería
