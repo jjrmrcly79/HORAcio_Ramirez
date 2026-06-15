@@ -110,7 +110,7 @@ Solo lectura, **sin nombres de operadoras** (líneas/líderes). Muestra: KPIs de
 (cumplimiento, tableros reportando, paros/faltantes/calidad abiertos, acuse prom.),
 semáforo por tablero, **heartbeat de captura por líder** (quién sube info), tabla de
 **escalamientos abiertos**, barras real vs plan por hora, y **Pareto de causas apilado por área/líder** (SMT-Viridiana,
-PTH-Yadira, Conformal-Chío; combina paros formales + causas de merma del HxH ❌, 7d).
+PTH-Yadira, Conformal-Chío; combina paros formales + causas de merma del HxH ❌, 7d). Debajo, mini-tabla "Causa #1 por área".
 Fuente: `n8n/horacio-dash.code.js`. Para apagar el espejo de validación no afecta esto.
 Refrescar: `python3 scripts/push_code.py n8n/horacio-dash.code.js ng4loQv932n2AIRC "Horacio Dash"`.
 

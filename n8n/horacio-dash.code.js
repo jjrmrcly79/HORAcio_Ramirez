@@ -52,7 +52,7 @@ if (q.data !== '1') {
 '<div class="card"><h2>¿Quién está subiendo su info? (hoy)</h2><div id="hb"></div></div></div>',
 '<div class="card"><h2>Escalamientos abiertos ahora</h2><div id="esc"></div></div>',
 '<div class="grid2"><div class="card"><h2>Real vs Plan por hora (hoy)</h2><canvas id="cHora" height="160"></canvas></div>',
-'<div class="card"><h2>Pareto de causas por área (7 días)</h2><canvas id="cPar" height="160"></canvas></div></div>',
+'<div class="card"><h2>Pareto de causas por área (7 días)</h2><canvas id="cPar" height="160"></canvas><div id="topArea" style="margin-top:10px"></div></div></div>',
 '<p class="muted">Actualiza solo cada 30s · sin nombres de operadoras</p>',
 '</div>',
 '<script>',
@@ -85,6 +85,7 @@ if (q.data !== '1') {
 '      d.escalamientos.forEach(function(e){et+="<tr><td><span class=\\"pill t-"+e.tipo+"\\">"+e.tipo+"</span></td><td>"+e.tablero+"</td><td>"+(e.detalle||"")+"</td><td>"+(e.quien||"—")+"</td><td>"+e.haceMin+" min</td><td>"+(e.acuse?"✅":"⏳")+"</td></tr>"});',
 '      et+="</table>";document.getElementById("esc").innerHTML=et;}else{document.getElementById("esc").innerHTML="<div class=\\"empty\\">Nada escalado abierto 🎉</div>"}',
 '    drawHora(d.porHora);drawPar(d.pareto);',
+'    var ta="<table><tr><th>Área</th><th>Causa #1</th><th>Veces</th></tr>";d.topArea.forEach(function(t){ta+="<tr><td><b>"+t.area+"</b> <span class=\\"muted\\">"+t.lider+"</span></td><td>"+(t.causa||"— sin causas —")+"</td><td>"+(t.n||0)+"</td></tr>"});ta+="</table>";document.getElementById("topArea").innerHTML=ta;',
 '  }catch(e){document.getElementById("sub").textContent="error: "+e.message}',
 '}',
 'function kpi(v,l){return "<div class=\\"kpi\\"><div class=\\"v\\">"+v+"</div><div class=\\"l\\">"+l+"</div></div>"}',
@@ -155,6 +156,12 @@ const pareto = {
   areas: AREAS.map((k) => ({ key: k, label: grpName(k) + ' - ' + friendly(areaLeader[k]) })),
   data: AREAS.reduce((o, k) => { o[k] = causas.map((c) => (byCA[c] && byCA[c][k]) || 0); return o; }, {}),
 };
+// causa #1 por área (para la mini-tabla)
+const topArea = AREAS.map((k) => {
+  let causa = null, n = 0;
+  Object.keys(byCA).forEach((c) => { const v = byCA[c][k] || 0; if (v > n) { n = v; causa = c; } });
+  return { area: grpName(k), lider: friendly(areaLeader[k]), causa, n };
+});
 
 const payload = {
   fecha, hora: now.toFormat('HH:mm'),
@@ -165,6 +172,6 @@ const payload = {
     faltAbiertos: Number(K.falt_ab) || 0, calAbiertos: Number(K.cal_ab) || 0,
     acuseMin: (K.acuse_min == null ? null : Number(K.acuse_min)),
   },
-  tableros, lideres, escalamientos: escal, porHora, pareto,
+  tableros, lideres, escalamientos: escal, porHora, pareto, topArea,
 };
 return [{ json: { body: JSON.stringify(payload), contentType: 'application/json; charset=utf-8' } }];
