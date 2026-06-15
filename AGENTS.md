@@ -77,6 +77,18 @@ operadoras). Jorge (direccion) lo sigue recibiendo. Envío con try/catch por
 destinatario (un fallo no frena a los demás).
 Ref: `n8n/horacio-bot.code.js` (`askArea` opción resumen · `rol_pick` msg a medida · admin `resumen_dir` loop).
 
+### ✅ Escalamiento por no-captura → Producción (2026-06-15)
+Andon completo del HxH: si una líder no sube su hora por hora, ping `:35` →
+**recordatorio `:50`** (`reminder_all`, re-manda la botonera) → si **sigue sin subir**,
+**escalamiento `:58`** (`escalate_nocapture`) avisa a **Daniel Nava** (rol `paros`,
+Producción) con la lista consolidada de quién/qué tablero falta, + un último empujón a
+la líder ("ya le avisé a Daniel por si necesitas apoyo"). Marca `d.escalado` para
+escalar una sola vez por slot. Todo dentro de la misma hora para que el `slot` calce.
+Nodo nuevo en `Horacio - Scheduler`: `Cron Escala :58 → POST escalate_nocapture`.
+Fuente: `n8n/horacio-bot.code.js` (admin `escalate_nocapture`).
+> Afinable: si se quiere exactamente +10/+20, mover recordatorio a `:45` y escala a `:55`
+> (el diff por índice de array no lo permite; requiere update full del Scheduler).
+
 ### ✅ Dashboard Mapartel — Horacio (2026-06-15)
 Workflow **`Horacio - Dashboard`** (`ng4loQv932n2AIRC`, ACTIVO). Webhook GET
 `/webhook/horacio-dash?token=<DASH_TOKEN>` sirve la **página HTML** (Chart.js, auto-

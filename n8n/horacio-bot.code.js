@@ -132,6 +132,31 @@ if (b && b.admin) {
     return [{ json: { admin: 'reminder_all', rem } }];
   }
 
+  if (b.admin === 'escalate_nocapture') {
+    // Si tras el recordatorio la líder sigue sin subir el slot → avisar a Producción (Daniel/paros)
+    const own = await pg("SELECT chat_id, nombre FROM horacio.personas WHERE rol='paros' AND chat_id IS NOT NULL AND activa LIMIT 1");
+    const O = (own && own.length) ? own[0] : null;
+    let escalated = 0; const pendientes = [];
+    for (const P of leadersP) {
+      const s = await pg(`SELECT step, data FROM horacio.sesiones WHERE chat_id=${P.chat_id}`);
+      if (!s || !s.length) continue;
+      const d = (typeof s[0].data === 'string') ? JSON.parse(s[0].data) : s[0].data;
+      if (!OPEN.includes(s[0].step) || !d || d.slot !== slot || d.escalado || !Array.isArray(d.boards)) continue;
+      const pend = d.boards.filter((x) => !(d.done || []).includes(x.linea_id));
+      if (!pend.length) continue;
+      d.escalado = true;
+      await pg(`UPDATE horacio.sesiones SET data='${esc(JSON.stringify(d))}'::jsonb, updated_at=now() WHERE chat_id=${P.chat_id}`);
+      pendientes.push(`• ${P.nombre}: ${pend.map((x) => x.nombre).join(', ')}`);
+      // último empujón a la líder, avisando que ya se escaló
+      await tg('sendMessage', { chat_id: P.chat_id, text: `${P.nombre}, aún no tengo tu hora por hora de ${slot}. Ya le avisé a Daniel por si necesitas apoyo 🙏`, reply_markup: { inline_keyboard: pend.map((x) => [{ text: x.nombre, callback_data: 'hxhb_' + x.linea_id }]) } });
+      escalated++;
+    }
+    if (O && escalated) {
+      await tg('sendMessage', { chat_id: O.chat_id, text: `⚠️ HxH de ${slot} sin reportar (ya les recordé):\n${pendientes.join('\n')}\n\n¿Puedes apoyar para que suban su hora por hora? — Horacio` });
+    }
+    return [{ json: { admin: 'escalate_nocapture', escalated, owner: O ? O.nombre : null } }];
+  }
+
   if (b.admin === 'resumen_lider') {
     let sent = 0;
     for (const P of leadersP) {
