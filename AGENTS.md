@@ -77,6 +77,19 @@ operadoras). Jorge (direccion) lo sigue recibiendo. Envío con try/catch por
 destinatario (un fallo no frena a los demás).
 Ref: `n8n/horacio-bot.code.js` (`askArea` opción resumen · `rol_pick` msg a medida · admin `resumen_dir` loop).
 
+### ✅ Dashboard Mapartel — Horacio (2026-06-15)
+Workflow **`Horacio - Dashboard`** (`ng4loQv932n2AIRC`, ACTIVO). Webhook GET
+`/webhook/horacio-dash?token=<DASH_TOKEN>` sirve la **página HTML** (Chart.js, auto-
+refresh 30s); con `&data=1` devuelve **JSON** de agregados. Un solo nodo Code
+(`Horacio Dash`) hace todo vía `/pg/query`; nodo `Respond` con `content-type` dinámico.
+Token nuevo `DASH_TOKEN` en `scripts/secrets.env` (sustituido por `push_code.py`).
+Solo lectura, **sin nombres de operadoras** (líneas/líderes). Muestra: KPIs del día
+(cumplimiento, tableros reportando, paros/faltantes/calidad abiertos, acuse prom.),
+semáforo por tablero, **heartbeat de captura por líder** (quién sube info), tabla de
+**escalamientos abiertos**, barras real vs plan por hora, y **Pareto de causas (7d)**.
+Fuente: `n8n/horacio-dash.code.js`. Para apagar el espejo de validación no afecta esto.
+Refrescar: `python3 scripts/push_code.py n8n/horacio-dash.code.js ng4loQv932n2AIRC "Horacio Dash"`.
+
 ### 🔌 Encendido para el piloto (R2-07) — checklist
 1. Cada **líder** hace `/start` → 📋 línea → elige su línea (auto-registro).
 2. Cada **dueño** hace `/start` → 🔔 área → elige su área (o `/dueno` directo).
