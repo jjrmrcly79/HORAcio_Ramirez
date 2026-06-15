@@ -92,8 +92,9 @@ if (q.data !== '1') {
 'function drawHora(rows){var lb=rows.map(function(r){return r.slot});var pl=rows.map(function(r){return r.plan});var re=rows.map(function(r){return r.real});',
 '  if(chHora)chHora.destroy();chHora=new Chart(document.getElementById("cHora"),{type:"bar",data:{labels:lb,datasets:[{label:"Plan",data:pl,backgroundColor:"#475569"},{label:"Real",data:re,backgroundColor:"#38bdf8"}]},options:{plugins:{legend:{labels:{color:"#e2e8f0"}}},scales:{x:{ticks:{color:"#94a3b8"}},y:{ticks:{color:"#94a3b8"}}}}})}',
 'function drawPar(p){var col={SMT:"#38bdf8",PTH:"#f59e0b",CONFORMAL:"#22c55e"};',
+'  var lb=p.causas.map(function(c){return c.replace(/^[\\s\\W]+/,"")});',
 '  var ds=p.areas.map(function(a){return {label:a.label,data:p.data[a.key],backgroundColor:col[a.key]||"#94a3b8"}});',
-'  if(chPar)chPar.destroy();chPar=new Chart(document.getElementById("cPar"),{type:"bar",data:{labels:p.causas,datasets:ds},options:{indexAxis:"y",plugins:{legend:{labels:{color:"#e2e8f0"}}},scales:{x:{stacked:true,ticks:{color:"#94a3b8"}},y:{stacked:true,ticks:{color:"#94a3b8"}}}}})}',
+'  if(chPar)chPar.destroy();chPar=new Chart(document.getElementById("cPar"),{type:"bar",data:{labels:lb,datasets:ds},options:{indexAxis:"y",plugins:{legend:{labels:{color:"#e2e8f0"}}},scales:{x:{stacked:true,beginAtZero:true,ticks:{color:"#94a3b8",precision:0}},y:{stacked:true,ticks:{color:"#e2e8f0",autoSkip:false}}}}})}',
 'load();setInterval(load,30000);',
 '</script></body></html>'
   ].join('');
