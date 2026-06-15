@@ -52,7 +52,7 @@ if (q.data !== '1') {
 '<div class="card"><h2>¿Quién está subiendo su info? (hoy)</h2><div id="hb"></div></div></div>',
 '<div class="card"><h2>Escalamientos abiertos ahora</h2><div id="esc"></div></div>',
 '<div class="grid2"><div class="card"><h2>Real vs Plan por hora (hoy)</h2><canvas id="cHora" height="160"></canvas></div>',
-'<div class="card"><h2>Pareto de causas (7 días)</h2><canvas id="cPar" height="160"></canvas></div></div>',
+'<div class="card"><h2>Pareto de causas por área (7 días)</h2><canvas id="cPar" height="160"></canvas></div></div>',
 '<p class="muted">Actualiza solo cada 30s · sin nombres de operadoras</p>',
 '</div>',
 '<script>',
@@ -90,8 +90,9 @@ if (q.data !== '1') {
 'function kpi(v,l){return "<div class=\\"kpi\\"><div class=\\"v\\">"+v+"</div><div class=\\"l\\">"+l+"</div></div>"}',
 'function drawHora(rows){var lb=rows.map(function(r){return r.slot});var pl=rows.map(function(r){return r.plan});var re=rows.map(function(r){return r.real});',
 '  if(chHora)chHora.destroy();chHora=new Chart(document.getElementById("cHora"),{type:"bar",data:{labels:lb,datasets:[{label:"Plan",data:pl,backgroundColor:"#475569"},{label:"Real",data:re,backgroundColor:"#38bdf8"}]},options:{plugins:{legend:{labels:{color:"#e2e8f0"}}},scales:{x:{ticks:{color:"#94a3b8"}},y:{ticks:{color:"#94a3b8"}}}}})}',
-'function drawPar(rows){var lb=rows.map(function(r){return r.causa});var n=rows.map(function(r){return r.n});',
-'  if(chPar)chPar.destroy();chPar=new Chart(document.getElementById("cPar"),{type:"bar",data:{labels:lb,datasets:[{label:"Veces",data:n,backgroundColor:"#f59e0b"}]},options:{indexAxis:"y",plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#94a3b8"}},y:{ticks:{color:"#94a3b8"}}}}})}',
+'function drawPar(p){var col={SMT:"#38bdf8",PTH:"#f59e0b",CONFORMAL:"#22c55e"};',
+'  var ds=p.areas.map(function(a){return {label:a.label,data:p.data[a.key],backgroundColor:col[a.key]||"#94a3b8"}});',
+'  if(chPar)chPar.destroy();chPar=new Chart(document.getElementById("cPar"),{type:"bar",data:{labels:p.causas,datasets:ds},options:{indexAxis:"y",plugins:{legend:{labels:{color:"#e2e8f0"}}},scales:{x:{stacked:true,ticks:{color:"#94a3b8"}},y:{stacked:true,ticks:{color:"#94a3b8"}}}}})}',
 'load();setInterval(load,30000);',
 '</script></body></html>'
   ].join('');
@@ -138,8 +139,22 @@ const escal = esc.map((e) => ({ tipo: e.tipo, tablero: e.tablero, detalle: e.det
 const ph = await pg(`SELECT hora_slot, COALESCE(SUM(plan) FILTER (WHERE NOT sin_dato),0)::int AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::int AS real FROM horacio.hora_por_hora WHERE fecha='${fecha}' GROUP BY hora_slot ORDER BY hora_slot`);
 const porHora = ph.map((r) => ({ slot: r.hora_slot, plan: Number(r.plan) || 0, real: Number(r.real) || 0 }));
 
-const par = await pg(`SELECT cp.boton_texto causa, COUNT(*)::int n FROM (SELECT causa_codigo FROM horacio.paros WHERE ts_inicio::date >= '${fecha}'::date-6 AND causa_codigo IS NOT NULL UNION ALL SELECT causa_codigo FROM horacio.hora_por_hora WHERE fecha >= '${fecha}'::date-6 AND causa_codigo IS NOT NULL) x JOIN horacio.causas_paro cp ON cp.codigo=x.causa_codigo GROUP BY cp.boton_texto ORDER BY n DESC LIMIT 8`);
-const pareto = par.map((r) => ({ causa: r.causa, n: Number(r.n) || 0 }));
+// líder por área (grupo) para la leyenda
+const lead = await pg("SELECT DISTINCT ON (l.grupo) l.grupo, p.nombre FROM horacio.lineas l JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE l.activa ORDER BY l.grupo, l.orden");
+const areaLeader = {}; lead.forEach((r) => { areaLeader[r.grupo] = r.nombre; });
+const friendly = (n) => { const m = n && n.match(/\(([^)]+)\)/); return m ? m[1] : (n ? n.split(' ')[0] : '?'); };
+const grpName = (g) => (g === 'CONFORMAL' ? 'Conformal' : g);
+// causas (paros + merma HxH) desglosadas por área
+const par = await pg(`SELECT cp.boton_texto AS causa, l.grupo AS grupo, COUNT(*)::int AS n FROM (SELECT causa_codigo, linea_id FROM horacio.paros WHERE ts_inicio::date >= '${fecha}'::date-6 AND causa_codigo IS NOT NULL UNION ALL SELECT causa_codigo, linea_id FROM horacio.hora_por_hora WHERE fecha >= '${fecha}'::date-6 AND causa_codigo IS NOT NULL) x JOIN horacio.causas_paro cp ON cp.codigo=x.causa_codigo JOIN horacio.lineas l ON l.id=x.linea_id GROUP BY cp.boton_texto, l.grupo`);
+const totals = {}, byCA = {};
+par.forEach((r) => { const n = Number(r.n) || 0; totals[r.causa] = (totals[r.causa] || 0) + n; (byCA[r.causa] = byCA[r.causa] || {})[r.grupo] = n; });
+const AREAS = ['SMT', 'PTH', 'CONFORMAL'];
+const causas = Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 8);
+const pareto = {
+  causas,
+  areas: AREAS.map((k) => ({ key: k, label: grpName(k) + ' - ' + friendly(areaLeader[k]) })),
+  data: AREAS.reduce((o, k) => { o[k] = causas.map((c) => (byCA[c] && byCA[c][k]) || 0); return o; }, {}),
+};
 
 const payload = {
   fecha, hora: now.toFormat('HH:mm'),

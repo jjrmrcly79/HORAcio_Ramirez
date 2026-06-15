@@ -109,7 +109,8 @@ Token nuevo `DASH_TOKEN` en `scripts/secrets.env` (sustituido por `push_code.py`
 Solo lectura, **sin nombres de operadoras** (líneas/líderes). Muestra: KPIs del día
 (cumplimiento, tableros reportando, paros/faltantes/calidad abiertos, acuse prom.),
 semáforo por tablero, **heartbeat de captura por líder** (quién sube info), tabla de
-**escalamientos abiertos**, barras real vs plan por hora, y **Pareto de causas (7d)**.
+**escalamientos abiertos**, barras real vs plan por hora, y **Pareto de causas apilado por área/líder** (SMT-Viridiana,
+PTH-Yadira, Conformal-Chío; combina paros formales + causas de merma del HxH ❌, 7d).
 Fuente: `n8n/horacio-dash.code.js`. Para apagar el espejo de validación no afecta esto.
 Refrescar: `python3 scripts/push_code.py n8n/horacio-dash.code.js ng4loQv932n2AIRC "Horacio Dash"`.
 
