@@ -77,6 +77,17 @@ operadoras). Jorge (direccion) lo sigue recibiendo. Envío con try/catch por
 destinatario (un fallo no frena a los demás).
 Ref: `n8n/horacio-bot.code.js` (`askArea` opción resumen · `rol_pick` msg a medida · admin `resumen_dir` loop).
 
+### ✅ Ventanas HxH de 6:30→7:30 (rango), no "hora en punto" (2026-06-15)
+El turno arranca **6:30**, así que las ventanas cierran a los **:30** (6:30-7:30,
+7:30-8:30, … 14:30-15:30 = 9 ventanas). El cron `:35` ya caía 5 min después del cierre
+:30 (timing correcto); lo que estaba mal era la **etiqueta** del slot (`06:00`, `07:00`
+…). Ahora el slot es el **rango real** `HH:30-HH:30` (con cero a la izq → ordena bien),
+vía helper `winClose(h)` en el bot. Se arrastra a recordatorio, escalación, catch-up,
+resúmenes y dashboard (mensajes ahora dicen "06:30-07:30: ¿salió la meta?"). El cron
+**no cambió**. Datos de **hoy** re-etiquetados (`HH:00`→`HH:30-(HH+1):30`) + slot de las
+sesiones en vuelo. Dashboard: `expectedSlots` = ventanas de :30 ya cerradas.
+Fuente: `n8n/horacio-bot.code.js` (winClose, admin slot, catchup, /ping) · `horacio-dash.code.js`.
+
 ### ✅ Escalamiento por no-captura → Producción (2026-06-15)
 Andon completo del HxH: si una líder no sube su hora por hora, ping `:35` →
 **recordatorio `:50`** (`reminder_all`, re-manda la botonera) → si **sigue sin subir**,

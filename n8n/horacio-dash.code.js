@@ -102,7 +102,8 @@ if (q.data !== '1') {
 const now = nowMX();
 const fecha = now.toFormat('yyyy-LL-dd');
 const horaNum = Number(now.toFormat('HH'));
-const expectedSlots = Math.max(0, Math.min(horaNum - 1, 15) - 7 + 1); // slots 07:00..(hora-1)
+const minNum = Number(now.toFormat('mm'));
+const expectedSlots = Math.max(0, Math.min(9, (horaNum - 7) + (minNum >= 30 ? 1 : 0))); // ventanas de :30 ya cerradas (6:30→7:30 …)
 
 const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::int AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::int AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima FROM horacio.lineas l LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
 const tableros = tab.map((t) => {

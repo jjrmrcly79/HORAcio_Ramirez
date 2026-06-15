@@ -39,6 +39,9 @@ const esc = (s) => String(s == null ? '' : s).replace(/'/g, "''");
 const rmKb = async (chat, mid) => { if (!mid) return; try { await tg('editMessageReplyMarkup', { chat_id: chat, message_id: mid, reply_markup: { inline_keyboard: [] } }); } catch (e) {} };
 const nowMX = () => DateTime.now().setZone('America/Mexico_City');
 const OPEN = ['hxh_menu', 'hxh_meta', 'hxh_piezas', 'hxh_causa', 'hxh_real'];
+// Ventanas HxH de 6:30→7:30 (turno arranca 6:30). winClose(h)=ventana cerrada en h:30.
+const pad2 = (n) => String(n).padStart(2, '0');
+const winClose = (h) => pad2(h - 1) + ':30-' + pad2(h) + ':30';
 // tableros de una líder por su persona_id (con plan vigente si lo tiene)
 const boardsByPid = async (pid) => {
   const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, (SELECT e.piezas_hora FROM horacio.estandares e WHERE e.linea_id=l.id AND e.vigente=true ORDER BY e.created_at DESC LIMIT 1) AS plan FROM horacio.lineas l WHERE l.lider_persona_id='${pid}' AND l.activa ORDER BY l.orden, l.codigo`);
@@ -53,7 +56,7 @@ if (b && b.admin) {
   if (b.secret !== ADMIN_SECRET) return [{ json: { ok: false, error: 'bad secret' } }];
   const now = nowMX();
   const fecha = now.toFormat('yyyy-LL-dd');
-  const slot = now.minus({ hours: 1 }).toFormat('HH:00'); // hora que acaba de cerrar
+  const slot = winClose(Number(now.toFormat('HH'))); // ventana recién cerrada (6:30→7:30 etc.)
   const leadersP = await pg("SELECT DISTINCT p.id AS pid, p.chat_id, p.nombre FROM horacio.lineas l JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE l.activa AND p.activa AND p.chat_id IS NOT NULL");
 
   if (b.admin === 'ping_all') {
@@ -92,10 +95,10 @@ if (b && b.admin) {
     //       opcional: { only_chat:<id> } para una sola líder · { intro:"..." }
     let slots = Array.isArray(b.slots) && b.slots.length ? b.slots : null;
     if (!slots) {
-      const fromH = Number.isFinite(b.from) ? b.from : 7;
-      const endH = Number(now.minus({ hours: 1 }).toFormat('HH'));
+      const fromH = Number.isFinite(b.from) ? b.from : 7; // hora de cierre de la 1a ventana (7 = 6:30→7:30)
+      const lastClose = (Number(now.toFormat('mm')) >= 30) ? Number(now.toFormat('HH')) : Number(now.toFormat('HH')) - 1;
       slots = [];
-      for (let h = fromH; h <= endH; h++) slots.push(String(h).padStart(2, '0') + ':00');
+      for (let h = fromH; h <= lastClose; h++) slots.push(winClose(h));
     }
     if (!slots.length) return [{ json: { admin: 'catchup', skip: 'sin slots' } }];
     const intro = b.intro || 'Perdón la demora 🙏 Apenas quedó listo Horacio. Vamos a recuperar el hora por hora de la mañana — te paso hora por hora, va rapidito.';
@@ -437,7 +440,9 @@ if (action === 'cack') {
 if (action === 'ping') {
   const B = await myBoards();
   if (!B.length) { await tg('sendMessage', { chat_id, text: 'No tienes tableros asignados. Haz /start.' }); return [{ json: { action: 'ping-noboard' } }]; }
-  const now = nowMX(); const fecha = now.toFormat('yyyy-LL-dd'); const slot = now.toFormat('HH:00');
+  const now = nowMX(); const fecha = now.toFormat('yyyy-LL-dd');
+  const ch = (Number(now.toFormat('mm')) >= 30) ? Number(now.toFormat('HH')) + 1 : Number(now.toFormat('HH'));
+  const slot = winClose(ch); // ventana abierta actual
   const d = { fecha, slot, boards: B, done: [], cur: null, reminded: false };
   await hxhBoardMenu(d);
   return [{ json: { action } }];
