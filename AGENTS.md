@@ -100,6 +100,23 @@ Fuente: `n8n/horacio-bot.code.js` (admin `escalate_nocapture`).
 > Afinable: si se quiere exactamente +10/+20, mover recordatorio a `:45` y escala a `:55`
 > (el diff por índice de array no lo permite; requiere update full del Scheduler).
 
+### ✅ Órdenes y meta por tablero — `/orden` (solo Daniel) (2026-06-16)
+Daniel (Producción) fija por subproceso la **OT** y la **meta/hr**; esa meta se vuelve
+el `plan` del HxH de ese tablero hoy → cada subproceso obtiene **cumplimiento**.
+Separación Andon: supervisor pone el plan, líder reporta lo real.
+- Tabla `horacio.ordenes_tablero` (linea_id, fecha, orden, meta_hr, vigente, set_by_chat, ts) — `sql/008`.
+- Comando **`/orden`** gated a `rol='paros'` (Daniel): menú de tableros (✅ los que ya
+  tienen OT) → toca uno → escribe OT → escribe meta/hr → guarda (marca prev `vigente=false`)
+  → vuelve al menú → "✔️ Terminar". Flujo `orden` / steps `orden_menu|orden_ot|orden_meta`
+  (ampliados en `sesiones_*_check`, sql/008).
+- `plan` ahora = **COALESCE(meta OT de hoy, estándar oficial, null)** en `boardsByPid`/
+  `myBoards` (consts `PLAN_SQL`/`ORDEN_SQL`). El ping muestra la OT: "PTH · OT 4521, …:
+  ¿salió la meta (80)?". En cuanto Daniel fija meta, ese tablero pasa de "¿cuántas piezas?"
+  a ✅/❌ y entra al %.
+- Dashboard: cada tablero muestra "OT … · meta …/h"; el cumplimiento ya aplica a los que tengan meta.
+- Probado e2e (Daniel→chat prueba: /orden PTH OT-4521 meta 80 → plan=80 → limpiado).
+Fuente: `n8n/horacio-bot.code.js` (acción `orden`/`orden_board`/`orden_done` + `ordenMenu` + captura OT/meta) · `horacio-dash.code.js`.
+
 ### ✅ Dashboard Mapartel — Horacio (2026-06-15)
 Workflow **`Horacio - Dashboard`** (`ng4loQv932n2AIRC`, ACTIVO). Webhook GET
 `/webhook/horacio-dash?token=<DASH_TOKEN>` sirve la **página HTML** (Chart.js, auto-

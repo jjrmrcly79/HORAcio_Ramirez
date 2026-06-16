@@ -76,7 +76,7 @@ if (q.data !== '1') {
 '      kpi(k.calAbiertos,"Calidad abierta")+',
 '      kpi((k.acuseMin==null?"—":k.acuseMin+" min"),"Acuse prom. (7d)");',
 '    var ht="";d.tableros.forEach(function(t){var p=t.pct==null?(t.real+" pzs"):(t.real+"/"+t.plan+" "+t.pct+"%");',
-'      ht+="<div class=\\"tab\\"><div>"+t.sem+" <b>"+t.nombre+"</b><div class=\\"muted\\">"+t.grupo+" · hora reportada "+(t.ultima||"—")+(t.sd?" · "+t.sd+" sin dato":"")+"</div></div><div style=\\"text-align:right\\">"+p+"</div></div>"});',
+'      ht+="<div class=\\"tab\\"><div>"+t.sem+" <b>"+t.nombre+"</b><div class=\\"muted\\">"+(t.ot?("OT "+t.ot+(t.meta!=null?" · meta "+t.meta+"/h":"")+" · "):"")+t.grupo+" · hora reportada "+(t.ultima||"—")+(t.sd?" · "+t.sd+" sin dato":"")+"</div></div><div style=\\"text-align:right\\">"+p+"</div></div>"});',
 '    document.getElementById("tableros").innerHTML=ht||"<div class=\\"empty\\">Sin datos hoy</div>";',
 '    var hh="";d.lideres.forEach(function(l){var pc=l.pct==null?0:l.pct;var c=pc>=80?"var(--ok)":pc>=50?"var(--warn)":"var(--bad)";',
 '      hh+="<div class=\\"tab\\"><div><b>"+l.nombre+"</b><div class=\\"bar\\"><i style=\\"width:"+Math.min(pc,100)+"%;background:"+c+"\\"></i></div></div><div style=\\"text-align:right\\">"+l.reportados+"/"+l.esperados+"<div class=\\"muted\\">captura "+(l.ultima||"—")+"</div></div></div>"});',
@@ -108,12 +108,12 @@ const horaNum = Number(now.toFormat('HH'));
 const minNum = Number(now.toFormat('mm'));
 const expectedSlots = Math.max(0, Math.min(9, (horaNum - 7) + (minNum >= 30 ? 1 : 0))); // ventanas de :30 ya cerradas (6:30→7:30 …)
 
-const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::int AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::int AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima FROM horacio.lineas l LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
+const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::int AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::int AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta FROM horacio.lineas l LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
 const tableros = tab.map((t) => {
   const plan = Number(t.plan) || 0, real = Number(t.real) || 0;
   const pct = plan > 0 ? Math.round(real / plan * 100) : null;
   const sem = pct == null ? '⚪' : (pct >= 95 ? '🟢' : (pct >= 80 ? '🟡' : '🔴'));
-  return { codigo: t.codigo, nombre: t.nombre, grupo: t.grupo, plan, real, pct, sem, ultima: t.ultima || null, sd: Number(t.sd) || 0 };
+  return { codigo: t.codigo, nombre: t.nombre, grupo: t.grupo, plan, real, pct, sem, ultima: t.ultima || null, sd: Number(t.sd) || 0, ot: t.ot || null, meta: t.meta != null ? Number(t.meta) : null };
 });
 const conMeta = tableros.filter((t) => t.plan > 0);
 const sumPlan = conMeta.reduce((a, t) => a + t.plan, 0), sumReal = conMeta.reduce((a, t) => a + t.real, 0);
