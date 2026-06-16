@@ -15,6 +15,41 @@ Fuente de verdad operativa (lo que n8n lee): tablas `horacio.*` en Supabase.
 - Patrón bot: Webhook + nodo **Code** que hace `httpRequest` a `/pg/query` y a la API de Telegram
   (verificado: el Code node usa `this.helpers.httpRequest` en esta instancia)
 
+## Estado actual (snapshot · 2026-06-16)
+**Piloto EN VIVO** — `Horacio - Scheduler` ACTIVO, produciendo datos reales.
+
+**Tableros y líderes (9 tableros, modelo "1 líder = varios tableros"):**
+| Grupo | Tableros | Líder | Alta |
+|---|---|---|---|
+| SMT | SMT 411&481 · SMT 520 (102/hr ofic.) | Viridiana Escalona | ✅ |
+| PTH | PTH · Ola · Soldeo · ICT/FCT · Conformal (Yadira) | Yadira Magdariaga | ✅ ⚠️ *de vacaciones; la cubre Gabriela (ver Relevos)* |
+| CONFORMAL | Conformal (Rocío) | Rocío (Chío) | ✅ |
+| EMBARQUES | Embarques (cajas retiradas) | Brenda Medina | ⏳ falta `/start` |
+
+**Dueños de escalamiento:** Daniel Nava (paros/Producción) · Nayeli Hernández
+(faltantes; **jefa de Embarques**) · Marco Sotelo (calidad; **+ recibe resumen**) ·
+Juan Carlos Martínez "JC" (mantenimiento) · Jorge Ramírez (dirección/resumen).
+
+**Crons activos (`Horacio - Scheduler` `ilJpIucqEBpKnFgT`, TZ MX, L–V):** órdenes
+`45 6` → ping `35 7-15` → recordatorio `50 7-15` → escala no-captura `58 7-15` →
+resumen líder `40 15` → resumen Dirección `0 17`.
+
+**Ventanas HxH:** turno 6:30–15:30 → 9 ventanas de :30 (06:30-07:30 … 14:30-15:30).
+**Meta/cumplimiento:** Daniel fija OT+meta por tablero con `/orden`; si no hay, usa
+estándar oficial; si no, captura conteo (piezas/cajas según `lineas.unidad`).
+
+**Dashboard:** `https://n8n.nexiasoluciones.com.mx/webhook/horacio-dash?token=<DASH_TOKEN>`
+(workflow `ng4loQv932n2AIRC`). **Espejo de validación** ON → copia todo al chat de
+prueba `5367409334` (apagar con `VALIDATOR=null`).
+
+**Decisiones abiertas:** (1) **Relevo Yadira→Gabriela** (vacaciones): pendiente —
+recomendado reasignar los 5 tableros a una persona "Gabriela" nueva (preserva a Yadira);
+hoy un `/start` de Gabriela heredaría los tableros pero dejaría el nombre "Yadira".
+(2) Estándares oficiales PTH/ola y Conformal. (3) Alta de Pamela/Ivonne/NexIA como
+receptores de resumen. (4) ¿Meta para Embarques o queda de conteo?
+
+---
+
 ## Estado del proyecto
 
 ### ✅ Fase 1 — Cimientos + HxH 1 línea (2026-06-11)
@@ -144,17 +179,20 @@ Solo lectura, **sin nombres de operadoras** (líneas/líderes). Muestra: KPIs de
 semáforo por tablero, **heartbeat de captura por líder** (quién sube info), tabla de
 **escalamientos abiertos**, barras real vs plan por hora, y **Pareto de causas apilado por área/líder** (SMT-Viridiana,
 PTH-Yadira, Conformal-Chío; combina paros formales + causas de merma del HxH ❌, 7d). Debajo, mini-tabla "Causa #1 por área".
+Cada tablero muestra además **OT · meta/h** (de `/orden`) y la unidad correcta (cajas/piezas).
+**Página endurecida (2026-06-16):** `fetch` con `cache:"no-store"`; lee texto y hace
+`JSON.parse` con mensaje claro si no es JSON (p.ej. token malo → "respuesta no válida");
+muestra `error HTTP <status>`; las gráficas van en try aparte (si Chart.js no carga, el
+resto del tablero igual se ve). Diagnóstico previo: el render es correcto en Node con el
+JSON real; un "no carga" suele ser navegador interno de Telegram / caché / token.
 Fuente: `n8n/horacio-dash.code.js`. Para apagar el espejo de validación no afecta esto.
 Refrescar: `python3 scripts/push_code.py n8n/horacio-dash.code.js ng4loQv932n2AIRC "Horacio Dash"`.
 
-### 🔌 Encendido para el piloto (R2-07) — checklist
-1. Cada **líder** hace `/start` → 📋 línea → elige su línea (auto-registro).
-2. Cada **dueño** hace `/start` → 🔔 área → elige su área (o `/dueno` directo).
-3. **Receptores de resumen** (Pamela/Ivonne/NexIA): `/start` → 🔔 → 📊 Solo resumen.
-3. Confirmar **SLAs firmados** (Daniel Nava, Nayeli).
-4. (Opcional) resetear altas de prueba: `UPDATE horacio.personas SET chat_id=NULL, consentimiento=false;`
-5. **Activar** el workflow `Horacio - Scheduler` en la UI de n8n. ← esto enciende los pings.
-   (Hoy hay 5 altas apuntando al chat de prueba 5367409334 para demo.)
+### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
+Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
+auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**
+`/start → 🔔 → 📊 Solo resumen`. Para alta manual de cualquiera, ver patrón en las
+secciones de abajo (o `getChat` para verificar identidad del chat tras el alta).
 
 ### ✅ Modelo real de líneas + organigrama (2026-06-12, `sql/003`)
 Corrección: los pizarrones HxH son **procesos**, no áreas; "Andromeda" es una
@@ -224,15 +262,17 @@ Jorge Ramírez (dirección) — todos con `consentimiento=true`. **Scheduler ACT
 - **Fix:** `personas_rol_check` no permitía rol `'resumen'` (sql/007) → las altas de
   receptores de resumen (Pamela/Ivonne/NexIA) fallaban con 23514. Corregido.
 
-### ⏳ Siguientes (post día-uno)
-- [ ] Estándar oficial de PTH/ola (ciclo 294 s/pasada → pzs/hr) con Ingeniería
-- [ ] Estándar oficial de Conformal (hoy "por validar")
-- [ ] Estándar por modelo (SMT corre varios modelos; hoy solo TJ000360)
-- [ ] Scheduler pings horarios (7:35–15:35) + recordatorio 15 min
-- [ ] Resumen líder 15:40 + resumen Dirección 17:00 (LLM)
-- [ ] Datos `#revisar`: líderes CIL3/Andromeda, 2 líneas con Pamela, estándar Andromeda
-- [ ] **Gate de encendido (R2-07):** SLAs firmados por Daniel Nava + Nayeli antes
-      del primer ping al piso real. Alta de chat_id con consentimiento vía RH.
+### ⏳ Siguientes (al 2026-06-16)
+- [ ] **Relevo Yadira→Gabriela** (vacaciones): reasignar sus 5 tableros a "Gabriela".
+- [ ] Alta de **Brenda** (Embarques) y de **Pamela/Ivonne/NexIA** (resumen).
+- [ ] Estándar oficial de **PTH/ola** (ciclo 294 s → pzs/hr) y **Conformal** con Ingeniería.
+- [ ] Estándar por modelo (SMT corre varios; hoy solo TJ000360) — o vía `/orden` diario.
+- [ ] (Opcional) Resúmenes con LLM (hoy por plantilla, sin LLM).
+- [ ] (Opcional) Flujo de "relevo" auto-servicio en el bot (reemplazar líder ocupado).
+- [ ] (Opcional) Separar Pareto: paros formales vs merma HxH.
+
+> ✅ Hecho desde el día uno: Scheduler activo (6 crons), equipo dado de alta, modelo de
+> tableros por líder, ventanas :30, escalación por jefe, `/orden`+meta, dashboard, espejo.
 
 ## Comandos rápidos
 ```bash
@@ -252,5 +292,10 @@ curl -s ".../bot<TOKEN>/getWebhookInfo"
 
 ## IDs clave
 - Bot: `@HoracioRamirez_bot` (id 8889801914)
-- Workflow n8n: `VKb215KJk5TdEsEY` (Horacio - Webhook)
-- Schema: `horacio` · app/canal piloto: Telegram, 5 líderes (por dar de alta)
+- Workflow bot: `VKb215KJk5TdEsEY` (Horacio - Webhook) · fuente `n8n/horacio-bot.code.js`
+- Workflow scheduler: `ilJpIucqEBpKnFgT` (Horacio - Scheduler) · 6 crons (ver snapshot)
+- Workflow dashboard: `ng4loQv932n2AIRC` (Horacio - Dashboard) · fuente `n8n/horacio-dash.code.js`
+- Schema: `horacio` · migraciones en `sql/001`…`sql/010`
+- Secretos (no en git): `scripts/secrets.env` → BOT_TOKEN, SERVICE_ROLE_KEY, ADMIN_SECRET, DASH_TOKEN
+- Deploy de un Code node: `python3 scripts/push_code.py <archivo> <workflow_id> "<node>"`
+- Chat de prueba / espejo de validación: `5367409334`
