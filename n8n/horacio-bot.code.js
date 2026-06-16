@@ -47,8 +47,8 @@ const winClose = (h) => pad2(h - 1) + ':30-' + pad2(h) + ':30';
 const PLAN_SQL = "COALESCE((SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND o.vigente ORDER BY o.ts DESC LIMIT 1),(SELECT e.piezas_hora FROM horacio.estandares e WHERE e.linea_id=l.id AND e.vigente=true ORDER BY e.created_at DESC LIMIT 1))";
 const ORDEN_SQL = "(SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND o.vigente ORDER BY o.ts DESC LIMIT 1)";
 const boardsByPid = async (pid) => {
-  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden FROM horacio.lineas l WHERE l.lider_persona_id='${pid}' AND l.activa ORDER BY l.orden, l.codigo`);
-  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null }));
+  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, l.unidad, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden FROM horacio.lineas l WHERE l.lider_persona_id='${pid}' AND l.activa ORDER BY l.orden, l.codigo`);
+  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, unidad: x.unidad || 'piezas', plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null }));
 };
 
 const __i = $input.first().json;
@@ -175,7 +175,7 @@ if (b && b.admin) {
   if (b.admin === 'resumen_lider') {
     let sent = 0;
     for (const P of leadersP) {
-      const boards = await pg(`SELECT id, nombre FROM horacio.lineas WHERE lider_persona_id='${P.pid}' AND activa ORDER BY orden, codigo`);
+      const boards = await pg(`SELECT id, nombre, unidad FROM horacio.lineas WHERE lider_persona_id='${P.pid}' AND activa ORDER BY orden, codigo`);
       let lines = [], gtp = 0, gtr = 0;
       for (const bd of boards) {
         const hxh = await pg(`SELECT plan, real, sin_dato FROM horacio.hora_por_hora WHERE linea_id='${bd.id}' AND fecha='${fecha}'`);
@@ -185,7 +185,7 @@ if (b && b.admin) {
         const falt = await pg(`SELECT COUNT(*) FILTER (WHERE estado<>'cerrado')::int AS ab FROM horacio.faltantes WHERE linea_id='${bd.id}' AND ts_reporte::date='${fecha}'`);
         if (!has && paros[0].n === 0 && falt[0].ab === 0) continue;
         gtp += tp; gtr += tr;
-        const prod = tp > 0 ? `${tr}/${tp} (${Math.round(tr / tp * 100)}%)` : `${tr} pzs`;
+        const prod = tp > 0 ? `${tr}/${tp} (${Math.round(tr / tp * 100)}%)` : `${tr} ${bd.unidad || 'pzs'}`;
         lines.push(`• ${bd.nombre}: ${prod}${sd ? ` · ${sd} sin dato` : ''}${paros[0].n ? ` · paros ${paros[0].n} (${paros[0].min}m)` : ''}${falt[0].ab ? ` · faltantes ${falt[0].ab}` : ''}`);
       }
       const tot = gtp > 0 ? `\n\nTotal con meta: ${gtr}/${gtp} (${Math.round(gtr / gtp * 100)}%)` : '';
@@ -199,7 +199,7 @@ if (b && b.admin) {
   if (b.admin === 'resumen_dir') {
     const recips = await pg("SELECT chat_id, nombre FROM horacio.personas WHERE rol IN ('direccion','resumen') AND chat_id IS NOT NULL AND activa");
     if (!recips || !recips.length) return [{ json: { admin: 'resumen_dir', skip: 'sin destinatarios' } }];
-    const tableros = await pg("SELECT id, nombre, grupo FROM horacio.lineas WHERE activa=true ORDER BY grupo, orden, codigo");
+    const tableros = await pg("SELECT id, nombre, grupo, unidad FROM horacio.lineas WHERE activa=true ORDER BY grupo, orden, codigo");
     let blocks = [], curGrupo = null, shown = 0;
     for (const L of tableros) {
       const agg = await pg(`SELECT COALESCE(SUM(plan),0)::int AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::int AS real, COUNT(*) FILTER (WHERE NOT sin_dato)::int AS condato, COUNT(*) FILTER (WHERE sin_dato)::int AS sd FROM horacio.hora_por_hora WHERE linea_id='${L.id}' AND fecha='${fecha}'`);
@@ -210,7 +210,7 @@ if (b && b.admin) {
       if (!hadProd && paros[0].n === 0 && falt[0].ab === 0 && sd === 0) continue; // sin nada hoy
       let prod, sem;
       if (P > 0) { const pct = Math.round(R / P * 100); sem = pct >= 95 ? '🟢' : (pct >= 80 ? '🟡' : '🔴'); prod = `${R}/${P} (${pct}%)`; }
-      else { sem = '⚪'; prod = `${R} pzs`; }
+      else { sem = '⚪'; prod = `${R} ${L.unidad || 'pzs'}`; }
       if (L.grupo !== curGrupo) { curGrupo = L.grupo; blocks.push(`\n— ${curGrupo} —`); }
       blocks.push(`${sem} ${L.nombre}: ${prod} · paros ${paros[0].n} (${paros[0].min}m) · faltantes ${falt[0].ab}${sd ? ` · ${sd} sin dato` : ''}`);
       shown++;
@@ -247,8 +247,8 @@ const setSess = async (flujo, step, d) => {
 };
 // tableros de la líder que escribe (por su chat_id)
 const myBoards = async () => {
-  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden FROM horacio.lineas l JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE p.chat_id=${chat_id} AND p.activa AND l.activa ORDER BY l.orden, l.codigo`);
-  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null }));
+  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, l.unidad, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden FROM horacio.lineas l JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE p.chat_id=${chat_id} AND p.activa AND l.activa ORDER BY l.orden, l.codigo`);
+  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, unidad: x.unidad || 'piezas', plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null }));
 };
 const menu = async (txt) => {
   await tg('sendMessage', { chat_id, text: txt || '¿Qué necesitas?', reply_markup: { inline_keyboard: [[{ text: '🛑 Reportar paro', callback_data: 'paro_start' }], [{ text: '📦 Falta material', callback_data: 'falt_start' }], [{ text: '🔎 Reportar calidad', callback_data: 'cal_start' }]] } });
@@ -508,7 +508,7 @@ if (action === 'hxh_board') {
     await tg('sendMessage', { chat_id, text: `${board.nombre}${ot}, ${d.slot}: ¿salió la meta (${board.plan})?`, reply_markup: { inline_keyboard: [[{ text: '✅ Sí', callback_data: 'hxh_si' }, { text: '❌ Faltó', callback_data: 'hxh_no' }]] } });
   } else {
     await setSess('hxh', 'hxh_real', d);
-    await tg('sendMessage', { chat_id, text: `${board.nombre}${ot}, ${d.slot}: ¿cuántas piezas salieron? Escríbeme el número.` });
+    await tg('sendMessage', { chat_id, text: `${board.nombre}${ot}, ${d.slot}: ¿cuántas ${board.unidad || 'piezas'}? Escríbeme el número.` });
   }
   return [{ json: { action } }];
 }
@@ -584,7 +584,7 @@ if (action === 'ignore' && msg && (text || photo)) {
     if (isNaN(n)) { await tg('sendMessage', { chat_id, text: 'Mándame solo el número de piezas que salieron 🙏' }); return [{ json: { action: 'hxh_real_bad' } }]; }
     const d = s.d; const board = d.boards.find((x) => x.linea_id === d.cur);
     await pg(`INSERT INTO horacio.hora_por_hora(linea_id,fecha,hora_slot,real,t_productivo_min,reporto_chat_id) VALUES('${d.cur}','${d.fecha}','${d.slot}',${n},60,${chat_id})`);
-    await tg('sendMessage', { chat_id, text: `Va, anotado 👍 ${board.nombre}: ${n} piezas.` });
+    await tg('sendMessage', { chat_id, text: `Va, anotado 👍 ${board.nombre}: ${n} ${board.unidad || 'piezas'}.` });
     d.done.push(d.cur); d.cur = null;
     await hxhBoardMenu(d);
     return [{ json: { action: 'hxh_real' } }];
