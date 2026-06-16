@@ -139,10 +139,15 @@ if (b && b.admin) {
   }
 
   if (b.admin === 'escalate_nocapture') {
-    // Si tras el recordatorio la líder sigue sin subir el slot → avisar a Producción (Daniel/paros)
-    const own = await pg("SELECT chat_id, nombre FROM horacio.personas WHERE rol='paros' AND chat_id IS NOT NULL AND activa LIMIT 1");
-    const O = (own && own.length) ? own[0] : null;
-    let escalated = 0; const pendientes = [];
+    // Si tras el recordatorio la líder sigue sin subir → avisar a SU jefe (supervisor_rol del tablero)
+    const byRol = {}; // supervisor_rol -> ['• Líder: Tablero', ...]
+    const ownerCache = {};
+    const ownerOf = async (rol) => {
+      if (ownerCache[rol] !== undefined) return ownerCache[rol];
+      const o = await pg(`SELECT chat_id, nombre FROM horacio.personas WHERE rol='${esc(rol)}' AND chat_id IS NOT NULL AND activa LIMIT 1`);
+      ownerCache[rol] = (o && o.length) ? o[0] : null; return ownerCache[rol];
+    };
+    let escalated = 0;
     for (const P of leadersP) {
       const s = await pg(`SELECT step, data FROM horacio.sesiones WHERE chat_id=${P.chat_id}`);
       if (!s || !s.length) continue;
@@ -150,17 +155,27 @@ if (b && b.admin) {
       if (!OPEN.includes(s[0].step) || !d || d.slot !== slot || d.escalado || !Array.isArray(d.boards)) continue;
       const pend = d.boards.filter((x) => !(d.done || []).includes(x.linea_id));
       if (!pend.length) continue;
+      const ids = pend.map((x) => `'${x.linea_id}'`).join(',');
+      const sup = await pg(`SELECT id, supervisor_rol FROM horacio.lineas WHERE id IN (${ids})`);
+      const supMap = {}; sup.forEach((r) => { supMap[r.id] = r.supervisor_rol || 'paros'; });
+      let jefeNombre = 'tu jefe';
+      for (const x of pend) {
+        const rol = supMap[x.linea_id] || 'paros';
+        (byRol[rol] = byRol[rol] || []).push(`• ${P.nombre}: ${x.nombre}`);
+        const ow = await ownerOf(rol);
+        if (ow && jefeNombre === 'tu jefe') jefeNombre = ow.nombre;
+      }
       d.escalado = true;
       await pg(`UPDATE horacio.sesiones SET data='${esc(JSON.stringify(d))}'::jsonb, updated_at=now() WHERE chat_id=${P.chat_id}`);
-      pendientes.push(`• ${P.nombre}: ${pend.map((x) => x.nombre).join(', ')}`);
-      // último empujón a la líder, avisando que ya se escaló
-      await tg('sendMessage', { chat_id: P.chat_id, text: `${P.nombre}, aún no tengo tu hora por hora de ${slot}. Ya le avisé a Daniel por si necesitas apoyo 🙏`, reply_markup: { inline_keyboard: pend.map((x) => [{ text: x.nombre, callback_data: 'hxhb_' + x.linea_id }]) } });
+      await tg('sendMessage', { chat_id: P.chat_id, text: `${P.nombre}, aún no tengo tu hora por hora de ${slot}. Ya le avisé a ${esc(jefeNombre)} por si necesitas apoyo 🙏`, reply_markup: { inline_keyboard: pend.map((x) => [{ text: x.nombre, callback_data: 'hxhb_' + x.linea_id }]) } });
       escalated++;
     }
-    if (O && escalated) {
-      await tg('sendMessage', { chat_id: O.chat_id, text: `⚠️ HxH de ${slot} sin reportar (ya les recordé):\n${pendientes.join('\n')}\n\n¿Puedes apoyar para que suban su hora por hora? — Horacio` });
+    const notified = [];
+    for (const rol of Object.keys(byRol)) {
+      const ow = await ownerOf(rol);
+      if (ow) { await tg('sendMessage', { chat_id: ow.chat_id, text: `⚠️ HxH de ${slot} sin reportar (ya les recordé):\n${byRol[rol].join('\n')}\n\n¿Puedes apoyar para que suban su hora por hora? — Horacio` }); notified.push(ow.nombre); }
     }
-    return [{ json: { admin: 'escalate_nocapture', escalated, owner: O ? O.nombre : null } }];
+    return [{ json: { admin: 'escalate_nocapture', escalated, notified } }];
   }
 
   if (b.admin === 'orden_reminder') {

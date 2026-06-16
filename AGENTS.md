@@ -108,9 +108,10 @@ Nayeli) captura cuántas **cajas** retira del piso = realidad de lo embarcable.
 - Columna **`lineas.unidad`** (default `piezas`; Embarques=`cajas`): el HxH pregunta
   "¿cuántas cajas?" y confirma/resume en esa unidad; el dashboard muestra "12 cajas".
 - Es unmetered por defecto (captura conteo); si Daniel le pone meta vía `/orden`, entra al %.
-> Pendiente de decisión: el escalamiento de no-captura (:58) va a Daniel para TODAS las
-> líderes; si se quiere que el de Brenda vaya a **Nayeli** (su jefa), hay que volver la
-> escalación por-líder (hoy es global a Producción).
+- **Escalamiento por jefe (sql/010):** columna `lineas.supervisor_rol` (default `paros`→
+  Daniel; `EMBARQUES`→`faltantes`→**Nayeli**, jefa de embarques). `escalate_nocapture`
+  ya no manda todo a Daniel: agrupa los pendientes por `supervisor_rol` y avisa a cada
+  jefe (prod→Daniel, embarques→Nayeli); el empujón a la líder nombra a su jefe correcto.
 
 ### ✅ Órdenes y meta por tablero — `/orden` (solo Daniel) (2026-06-16)
 Daniel (Producción) fija por subproceso la **OT** y la **meta/hr**; esa meta se vuelve
