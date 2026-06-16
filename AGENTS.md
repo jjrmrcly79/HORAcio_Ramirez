@@ -100,6 +100,18 @@ Fuente: `n8n/horacio-bot.code.js` (admin `escalate_nocapture`).
 > Afinable: si se quiere exactamente +10/+20, mover recordatorio a `:45` y escala a `:55`
 > (el diff por índice de array no lo permite; requiere update full del Scheduler).
 
+### ✅ Tablero Embarques (Brenda Medina) + unidad por tablero (2026-06-16)
+Nuevo proceso de cierre del flujo: **Brenda Medina** (Líder de Embarque, reporta a
+Nayeli) captura cuántas **cajas** retira del piso = realidad de lo embarcable.
+- Tablero `EMBARQUES` (grupo propio, `no_estandar`), líder Brenda; se registra con
+  `/start → 📋 línea → Embarques`. `sql/009`.
+- Columna **`lineas.unidad`** (default `piezas`; Embarques=`cajas`): el HxH pregunta
+  "¿cuántas cajas?" y confirma/resume en esa unidad; el dashboard muestra "12 cajas".
+- Es unmetered por defecto (captura conteo); si Daniel le pone meta vía `/orden`, entra al %.
+> Pendiente de decisión: el escalamiento de no-captura (:58) va a Daniel para TODAS las
+> líderes; si se quiere que el de Brenda vaya a **Nayeli** (su jefa), hay que volver la
+> escalación por-líder (hoy es global a Producción).
+
 ### ✅ Órdenes y meta por tablero — `/orden` (solo Daniel) (2026-06-16)
 Daniel (Producción) fija por subproceso la **OT** y la **meta/hr**; esa meta se vuelve
 el `plan` del HxH de ese tablero hoy → cada subproceso obtiene **cumplimiento**.
