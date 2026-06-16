@@ -217,7 +217,7 @@ if (b && b.admin) {
     const tableros = await pg("SELECT id, nombre, grupo, unidad FROM horacio.lineas WHERE activa=true ORDER BY grupo, orden, codigo");
     let blocks = [], curGrupo = null, shown = 0;
     for (const L of tableros) {
-      const agg = await pg(`SELECT COALESCE(SUM(plan),0)::int AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::int AS real, COUNT(*) FILTER (WHERE NOT sin_dato)::int AS condato, COUNT(*) FILTER (WHERE sin_dato)::int AS sd FROM horacio.hora_por_hora WHERE linea_id='${L.id}' AND fecha='${fecha}'`);
+      const agg = await pg(`SELECT COALESCE(SUM(plan),0)::bigint AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::bigint AS real, COUNT(*) FILTER (WHERE NOT sin_dato)::int AS condato, COUNT(*) FILTER (WHERE sin_dato)::int AS sd FROM horacio.hora_por_hora WHERE linea_id='${L.id}' AND fecha='${fecha}'`);
       const paros = await pg(`SELECT COUNT(*)::int AS n, COALESCE(SUM(duracion_min),0)::int AS min FROM horacio.paros WHERE linea_id='${L.id}' AND ts_inicio::date='${fecha}'`);
       const falt = await pg(`SELECT COUNT(*) FILTER (WHERE estado<>'cerrado')::int AS ab FROM horacio.faltantes WHERE linea_id='${L.id}' AND ts_reporte::date='${fecha}'`);
       const P = agg[0].plan, R = agg[0].real, conDato = agg[0].condato, sd = agg[0].sd;
@@ -585,7 +585,7 @@ if (action === 'ignore' && msg && (text || photo)) {
   }
   if (s && s.step === 'orden_meta') {
     const m = parseInt(String(text || '').replace(/[^0-9]/g, ''), 10);
-    if (isNaN(m)) { await tg('sendMessage', { chat_id, text: 'Mándame solo el número de la meta por hora 🙏' }); return [{ json: { action: 'orden_meta_bad' } }]; }
+    if (isNaN(m) || m < 1 || m > 100000) { await tg('sendMessage', { chat_id, text: 'Mándame la meta por hora como número (1 a 100000) 🙏' }); return [{ json: { action: 'orden_meta_bad' } }]; }
     const cur = s.d.cur;
     await pg(`UPDATE horacio.ordenes_tablero SET vigente=false WHERE linea_id='${esc(cur)}' AND fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND vigente`);
     await pg(`INSERT INTO horacio.ordenes_tablero(linea_id,fecha,orden,meta_hr,vigente,set_by_chat) VALUES('${esc(cur)}',(now() AT TIME ZONE 'America/Mexico_City')::date,'${esc(s.d.orden)}',${m},true,${chat_id})`);
@@ -596,7 +596,8 @@ if (action === 'ignore' && msg && (text || photo)) {
   }
   if (s && s.step === 'hxh_real' && s.d.cur) {
     const n = parseInt(String(text || '').replace(/[^0-9]/g, ''), 10);
-    if (isNaN(n)) { await tg('sendMessage', { chat_id, text: 'Mándame solo el número de piezas que salieron 🙏' }); return [{ json: { action: 'hxh_real_bad' } }]; }
+    if (isNaN(n)) { await tg('sendMessage', { chat_id, text: 'Mándame solo el número que salió 🙏' }); return [{ json: { action: 'hxh_real_bad' } }]; }
+    if (n > 100000) { await tg('sendMessage', { chat_id, text: 'Ese número parece muy grande 🤔 mándame solo el conteo de esta hora.' }); return [{ json: { action: 'hxh_real_big' } }]; }
     const d = s.d; const board = d.boards.find((x) => x.linea_id === d.cur);
     await pg(`INSERT INTO horacio.hora_por_hora(linea_id,fecha,hora_slot,real,t_productivo_min,reporto_chat_id) VALUES('${d.cur}','${d.fecha}','${d.slot}',${n},60,${chat_id})`);
     await tg('sendMessage', { chat_id, text: `Va, anotado 👍 ${board.nombre}: ${n} ${board.unidad || 'piezas'}.` });

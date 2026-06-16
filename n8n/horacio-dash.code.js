@@ -110,7 +110,7 @@ const horaNum = Number(now.toFormat('HH'));
 const minNum = Number(now.toFormat('mm'));
 const expectedSlots = Math.max(0, Math.min(9, (horaNum - 7) + (minNum >= 30 ? 1 : 0))); // ventanas de :30 ya cerradas (6:30→7:30 …)
 
-const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, l.unidad, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::int AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::int AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta FROM horacio.lineas l LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
+const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, l.unidad, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::bigint AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::bigint AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta FROM horacio.lineas l LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
 const tableros = tab.map((t) => {
   const plan = Number(t.plan) || 0, real = Number(t.real) || 0;
   const pct = plan > 0 ? Math.round(real / plan * 100) : null;
@@ -140,7 +140,7 @@ const esc = await pg(`SELECT tipo, tablero, detalle, quien, ts, acuse_ts FROM (
 const nowMs = now.toMillis();
 const escal = esc.map((e) => ({ tipo: e.tipo, tablero: e.tablero, detalle: e.detalle, quien: e.quien, haceMin: Math.max(0, Math.round((nowMs - DateTime.fromISO(e.ts).toMillis()) / 60000)), acuse: !!e.acuse_ts }));
 
-const ph = await pg(`SELECT hora_slot, COALESCE(SUM(plan) FILTER (WHERE NOT sin_dato),0)::int AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::int AS real FROM horacio.hora_por_hora WHERE fecha='${fecha}' GROUP BY hora_slot ORDER BY hora_slot`);
+const ph = await pg(`SELECT hora_slot, COALESCE(SUM(plan) FILTER (WHERE NOT sin_dato),0)::bigint AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::bigint AS real FROM horacio.hora_por_hora WHERE fecha='${fecha}' GROUP BY hora_slot ORDER BY hora_slot`);
 const porHora = ph.map((r) => ({ slot: r.hora_slot, plan: Number(r.plan) || 0, real: Number(r.real) || 0 }));
 
 // líder por área (grupo) para la leyenda
