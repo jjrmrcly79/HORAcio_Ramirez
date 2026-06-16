@@ -114,8 +114,11 @@ Separación Andon: supervisor pone el plan, líder reporta lo real.
   ¿salió la meta (80)?". En cuanto Daniel fija meta, ese tablero pasa de "¿cuántas piezas?"
   a ✅/❌ y entra al %.
 - Dashboard: cada tablero muestra "OT … · meta …/h"; el cumplimiento ya aplica a los que tengan meta.
-- Probado e2e (Daniel→chat prueba: /orden PTH OT-4521 meta 80 → plan=80 → limpiado).
-Fuente: `n8n/horacio-bot.code.js` (acción `orden`/`orden_board`/`orden_done` + `ordenMenu` + captura OT/meta) · `horacio-dash.code.js`.
+- **Recordatorio matutino** (admin `orden_reminder`): cron **`Cron Ordenes 6:45`** (L–V,
+  TZ MX) en `Horacio - Scheduler` → mensaje a Daniel para definir las órdenes del día
+  con /orden (antes del 1er ping 7:35), con el tip de volver a /orden si una OT cambia.
+- Probado e2e (Daniel→chat prueba: /orden PTH OT-4521 meta 80 → plan=80 → limpiado; orden_reminder sent:1).
+Fuente: `n8n/horacio-bot.code.js` (acción `orden`/`orden_board`/`orden_done` + `ordenMenu` + captura OT/meta + admin `orden_reminder`) · `horacio-dash.code.js`.
 
 ### ✅ Dashboard Mapartel — Horacio (2026-06-15)
 Workflow **`Horacio - Dashboard`** (`ng4loQv932n2AIRC`, ACTIVO). Webhook GET

@@ -163,6 +163,15 @@ if (b && b.admin) {
     return [{ json: { admin: 'escalate_nocapture', escalated, owner: O ? O.nombre : null } }];
   }
 
+  if (b.admin === 'orden_reminder') {
+    // recordatorio matutino a Producción (Daniel) para definir las órdenes del día
+    const own = await pg("SELECT chat_id, nombre FROM horacio.personas WHERE rol='paros' AND chat_id IS NOT NULL AND activa LIMIT 1");
+    const O = (own && own.length) ? own[0] : null;
+    if (!O) return [{ json: { admin: 'orden_reminder', skip: 'sin produccion' } }];
+    await tg('sendMessage', { chat_id: O.chat_id, text: `Buenos días, ${O.nombre} 🌅\nAntes de arrancar el turno, define las órdenes del día con /orden: la OT que corre y la meta por hora en cada tablero. Así cada proceso lleva su cumplimiento.\n\nSi una orden cambia durante el día, vuelve a tocar /orden y la actualizas 🙌` });
+    return [{ json: { admin: 'orden_reminder', sent: 1 } }];
+  }
+
   if (b.admin === 'resumen_lider') {
     let sent = 0;
     for (const P of leadersP) {
