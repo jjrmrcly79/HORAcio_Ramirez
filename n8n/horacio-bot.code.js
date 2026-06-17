@@ -38,7 +38,7 @@ const tg = async (m, p) => {
 const esc = (s) => String(s == null ? '' : s).replace(/'/g, "''");
 const rmKb = async (chat, mid) => { if (!mid) return; try { await tg('editMessageReplyMarkup', { chat_id: chat, message_id: mid, reply_markup: { inline_keyboard: [] } }); } catch (e) {} };
 const nowMX = () => DateTime.now().setZone('America/Mexico_City');
-const OPEN = ['hxh_menu', 'hxh_meta', 'hxh_piezas', 'hxh_causa', 'hxh_real'];
+const OPEN = ['hxh_menu', 'hxh_meta', 'hxh_piezas', 'hxh_causa', 'hxh_real', 'hxh_tj_pick', 'hxh_tj_np', 'hxh_tj_cant'];
 // Ventanas HxH de 6:30→7:30 (turno arranca 6:30). winClose(h)=ventana cerrada en h:30.
 const pad2 = (n) => String(n).padStart(2, '0');
 const winClose = (h) => pad2(h - 1) + ':30-' + pad2(h) + ':30';
@@ -47,8 +47,8 @@ const winClose = (h) => pad2(h - 1) + ':30-' + pad2(h) + ':30';
 const PLAN_SQL = "COALESCE((SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND o.vigente ORDER BY o.ts DESC LIMIT 1),(SELECT e.piezas_hora FROM horacio.estandares e WHERE e.linea_id=l.id AND e.vigente=true ORDER BY e.created_at DESC LIMIT 1))";
 const ORDEN_SQL = "(SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND o.vigente ORDER BY o.ts DESC LIMIT 1)";
 const boardsByPid = async (pid) => {
-  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, l.unidad, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden FROM horacio.lineas l WHERE l.lider_persona_id='${pid}' AND l.activa ORDER BY l.orden, l.codigo`);
-  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, unidad: x.unidad || 'piezas', plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null }));
+  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, l.unidad, l.captura, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden FROM horacio.lineas l WHERE l.lider_persona_id='${pid}' AND l.activa ORDER BY l.orden, l.codigo`);
+  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, unidad: x.unidad || 'piezas', captura: x.captura || 'conteo', plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null }));
 };
 
 const __i = $input.first().json;
@@ -262,8 +262,8 @@ const setSess = async (flujo, step, d) => {
 };
 // tableros de la líder que escribe (por su chat_id)
 const myBoards = async () => {
-  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, l.unidad, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden FROM horacio.lineas l JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE p.chat_id=${chat_id} AND p.activa AND l.activa ORDER BY l.orden, l.codigo`);
-  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, unidad: x.unidad || 'piezas', plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null }));
+  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, l.unidad, l.captura, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden FROM horacio.lineas l JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE p.chat_id=${chat_id} AND p.activa AND l.activa ORDER BY l.orden, l.codigo`);
+  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, unidad: x.unidad || 'piezas', captura: x.captura || 'conteo', plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null }));
 };
 const menu = async (txt) => {
   await tg('sendMessage', { chat_id, text: txt || '¿Qué necesitas?', reply_markup: { inline_keyboard: [[{ text: '🛑 Reportar paro', callback_data: 'paro_start' }], [{ text: '📦 Falta material', callback_data: 'falt_start' }], [{ text: '🔎 Reportar calidad', callback_data: 'cal_start' }]] } });
@@ -297,6 +297,20 @@ const hxhBoardMenu = async (d) => {
   const rows = pend.map((x) => [{ text: x.nombre, callback_data: 'hxhb_' + x.linea_id }]);
   const prog = d.boards.length > 1 ? `\n(${d.done.length}/${d.boards.length} listos)` : '';
   await tg('sendMessage', { chat_id, text: `Hora por hora de ${d.slot} — ¿qué tablero reportas?${prog}`, reply_markup: { inline_keyboard: rows } });
+};
+// menú de captura por tarjetas (Embarques): catálogo cerrado + ➕ Otra + ✔️ Cerrar
+const tjPickMenu = async (d) => {
+  const cat = await pg("SELECT id, numero_parte, nombre FROM horacio.tarjetas WHERE activa=true ORDER BY nombre NULLS LAST, numero_parte");
+  const btns = cat.map((t) => ({ text: (t.nombre ? t.nombre + ' · ' : '') + t.numero_parte, callback_data: 'tj_' + t.id }));
+  const rows = [];
+  for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
+  rows.push([{ text: '➕ Otra tarjeta', callback_data: 'tjotra' }]);
+  const reng = d.reng || [];
+  const total = reng.reduce((a, r) => a + Number(r.cant), 0);
+  if (reng.length) rows.push([{ text: `✔️ Cerrar la hora (${total} tarjetas)`, callback_data: 'tjdone' }]);
+  const lista = reng.length ? '\n\nLlevas:\n' + reng.map((r) => `• ${r.np} ×${r.cant}`).join('\n') : '';
+  await setSess('hxh', 'hxh_tj_pick', d);
+  await tg('sendMessage', { chat_id, text: `📦 Embarques · ${d.slot}: ¿qué tarjeta retiraste? Elige una por una.${lista}`, reply_markup: { inline_keyboard: rows } });
 };
 // arranca paro/falt/cal sobre un tablero ya elegido
 const startFlowWithBoard = async (flujo, linea_id, lnombre) => {
@@ -341,6 +355,9 @@ else if (data === 'orden_done') action = 'orden_done';
 else if (data === 'hxh_si') action = 'si';
 else if (data === 'hxh_no') action = 'no';
 else if (data.startsWith('hxhb_')) action = 'hxh_board';
+else if (data === 'tjotra') action = 'tj_otra';
+else if (data === 'tjdone') action = 'tj_done';
+else if (data.startsWith('tj_')) action = 'tj_pick';
 else if (data.startsWith('pz_')) action = 'pz';
 else if (data.startsWith('c_')) action = 'causa';
 else if (data === 'reg_linea') action = 'reg_linea';
@@ -497,6 +514,47 @@ if (action === 'cack') {
   return [{ json: { action } }];
 }
 
+// ---- HxH captura por tarjetas (Embarques) ----
+if (action === 'tj_pick') {
+  await rmKb(chat_id, mid);
+  const s = await readSess();
+  if (!s || s.step !== 'hxh_tj_pick' || !s.d.cur) { await tg('sendMessage', { chat_id, text: 'Espera el ping del hora por hora 🙏' }); return [{ json: { action: 'tj-guard' } }]; }
+  const tid = data.slice(3);
+  const tr = await pg(`SELECT id, numero_parte FROM horacio.tarjetas WHERE id='${esc(tid)}' AND activa`);
+  if (!tr || !tr.length) { await tg('sendMessage', { chat_id, text: 'Esa tarjeta ya no está. Elige otra.' }); await tjPickMenu(s.d); return [{ json: { action: 'tj-notfound' } }]; }
+  const d = Object.assign({}, s.d, { tj: { id: tr[0].id, np: tr[0].numero_parte } });
+  await setSess('hxh', 'hxh_tj_cant', d);
+  await tg('sendMessage', { chat_id, text: `¿Cuántas ${esc(tr[0].numero_parte)}? Escríbeme el número.` });
+  return [{ json: { action: 'tj_pick' } }];
+}
+if (action === 'tj_otra') {
+  await rmKb(chat_id, mid);
+  const s = await readSess();
+  if (!s || s.step !== 'hxh_tj_pick' || !s.d.cur) { await tg('sendMessage', { chat_id, text: 'Espera el ping del hora por hora 🙏' }); return [{ json: { action: 'tjotra-guard' } }]; }
+  await setSess('hxh', 'hxh_tj_np', s.d);
+  await tg('sendMessage', { chat_id, text: 'Escríbeme el número de parte de la tarjeta (tal cual viene en la etiqueta).' });
+  return [{ json: { action: 'tj_otra' } }];
+}
+if (action === 'tj_done') {
+  await rmKb(chat_id, mid);
+  const s = await readSess();
+  if (!s || s.step !== 'hxh_tj_pick' || !s.d.cur) { await tg('sendMessage', { chat_id, text: 'Espera el ping del hora por hora 🙏' }); return [{ json: { action: 'tjdone-guard' } }]; }
+  const d = s.d; const reng = d.reng || [];
+  if (!reng.length) { await tg('sendMessage', { chat_id, text: 'Aún no anotas ninguna tarjeta. Toca una del catálogo o ➕ Otra 🙏' }); await tjPickMenu(d); return [{ json: { action: 'tj-empty' } }]; }
+  const board = d.boards.find((x) => x.linea_id === d.cur);
+  const total = reng.reduce((a, r) => a + Number(r.cant), 0);
+  const ins = await pg(`INSERT INTO horacio.hora_por_hora(linea_id,fecha,hora_slot,real,t_productivo_min,reporto_chat_id) VALUES('${d.cur}','${d.fecha}','${d.slot}',${total},60,${chat_id}) RETURNING id`);
+  const hxhId = ins[0].id;
+  for (const r of reng) {
+    await pg(`INSERT INTO horacio.hxh_tarjetas(hxh_id,tarjeta_id,numero_parte,cantidad) VALUES('${hxhId}',${r.tarjeta_id ? `'${esc(r.tarjeta_id)}'` : 'NULL'},'${esc(r.np)}',${Number(r.cant)})`);
+  }
+  const detalle = reng.map((r) => `${r.np} ×${r.cant}`).join(', ');
+  await tg('sendMessage', { chat_id, text: `Va, anotado 👍 ${board.nombre}: ${total} ${board.unidad || 'tarjetas'} (${detalle}).` });
+  d.done.push(d.cur); d.cur = null; d.reng = []; d.tj = null;
+  await hxhBoardMenu(d);
+  return [{ json: { action: 'tj_done', hxhId } }];
+}
+
 // ---- HxH ----
 if (action === 'ping') {
   const B = await myBoards();
@@ -516,6 +574,11 @@ if (action === 'hxh_board') {
   const board = s.d.boards.find((x) => x.linea_id === id);
   if (!board) { await tg('sendMessage', { chat_id, text: 'Ese tablero ya no está en este ping.' }); return [{ json: { action: 'board-missing' } }]; }
   if (s.d.done.includes(id)) { await hxhBoardMenu(s.d); return [{ json: { action: 'board-already' } }]; }
+  if (board.captura === 'tarjetas') {
+    const d = Object.assign({}, s.d, { cur: id, reng: [], tj: null });
+    await tjPickMenu(d);
+    return [{ json: { action: 'hxh_board_tj' } }];
+  }
   const d = Object.assign({}, s.d, { cur: id });
   const ot = board.orden ? (' · OT ' + board.orden) : '';
   if (board.plan != null) {
@@ -593,6 +656,26 @@ if (action === 'ignore' && msg && (text || photo)) {
     await tg('sendMessage', { chat_id, text: `Anotado: ${esc(s.d.lnombre)} → OT ${esc(s.d.orden)}, meta ${m}/h.` });
     await ordenMenu();
     return [{ json: { action: 'orden_meta' } }];
+  }
+  if (s && s.step === 'hxh_tj_np' && s.d.cur) {
+    const np = (text || '').trim();
+    if (!np) { await tg('sendMessage', { chat_id, text: 'Escríbeme el número de parte de la tarjeta 🙏' }); return [{ json: { action: 'tj_np_bad' } }]; }
+    if (np.length > 60) { await tg('sendMessage', { chat_id, text: 'Ese número de parte es muy largo 🤔 mándame solo el NP de la etiqueta.' }); return [{ json: { action: 'tj_np_long' } }]; }
+    const up = await pg(`INSERT INTO horacio.tarjetas(numero_parte) VALUES('${esc(np)}') ON CONFLICT (numero_parte) DO UPDATE SET activa=true RETURNING id, numero_parte`);
+    const d = Object.assign({}, s.d, { tj: { id: up[0].id, np: up[0].numero_parte } });
+    await setSess('hxh', 'hxh_tj_cant', d);
+    await tg('sendMessage', { chat_id, text: `¿Cuántas ${esc(up[0].numero_parte)}? Escríbeme el número.` });
+    return [{ json: { action: 'tj_np' } }];
+  }
+  if (s && s.step === 'hxh_tj_cant' && s.d.cur && s.d.tj) {
+    const n = parseInt(String(text || '').replace(/[^0-9]/g, ''), 10);
+    if (isNaN(n) || n < 1) { await tg('sendMessage', { chat_id, text: 'Mándame cuántas tarjetas, solo el número 🙏' }); return [{ json: { action: 'tj_cant_bad' } }]; }
+    if (n > 100000) { await tg('sendMessage', { chat_id, text: 'Ese número parece muy grande 🤔 mándame solo el conteo de esa tarjeta.' }); return [{ json: { action: 'tj_cant_big' } }]; }
+    const d = s.d; d.reng = d.reng || [];
+    d.reng.push({ tarjeta_id: d.tj.id, np: d.tj.np, cant: n });
+    d.tj = null;
+    await tjPickMenu(d);
+    return [{ json: { action: 'tj_cant' } }];
   }
   if (s && s.step === 'hxh_real' && s.d.cur) {
     const n = parseInt(String(text || '').replace(/[^0-9]/g, ''), 10);
