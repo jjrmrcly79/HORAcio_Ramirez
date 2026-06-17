@@ -24,7 +24,7 @@ Fuente de verdad operativa (lo que n8n lee): tablas `horacio.*` en Supabase.
 | SMT | SMT 411&481 · SMT 520 (102/hr ofic.) | Viridiana Escalona | ✅ |
 | PTH | PTH · Ola · Soldeo · ICT/FCT · Conformal (Yadira) | Yadira Magdariaga | ✅ ⚠️ *de vacaciones; la cubre Gabriela (ver Relevos)* |
 | CONFORMAL | Conformal (Rocío) | Rocío (Chío) | ✅ |
-| EMBARQUES | Embarques (cajas retiradas) | Brenda Medina | ⏳ falta `/start` |
+| EMBARQUES | Embarques (tarjetas retiradas) | Brenda Medina | ✅ |
 
 **Dueños de escalamiento:** Daniel Nava (paros/Producción) · Nayeli Hernández
 (faltantes; **jefa de Embarques**) · Marco Sotelo (calidad; **+ recibe resumen**) ·
@@ -46,7 +46,8 @@ prueba `5367409334` (apagar con `VALIDATOR=null`).
 recomendado reasignar los 5 tableros a una persona "Gabriela" nueva (preserva a Yadira);
 hoy un `/start` de Gabriela heredaría los tableros pero dejaría el nombre "Yadira".
 (2) Estándares oficiales PTH/ola y Conformal. (3) Alta de Pamela/Ivonne/NexIA como
-receptores de resumen. (4) ¿Meta para Embarques o queda de conteo?
+receptores de resumen. (4) Embarques captura **por tarjeta (NP + cantidad)**, varias
+por hora; queda de conteo (sin meta) salvo que Daniel le ponga meta con `/orden`.
 
 ---
 
@@ -168,6 +169,30 @@ Separación Andon: supervisor pone el plan, líder reporta lo real.
 - Probado e2e (Daniel→chat prueba: /orden PTH OT-4521 meta 80 → plan=80 → limpiado; orden_reminder sent:1).
 Fuente: `n8n/horacio-bot.code.js` (acción `orden`/`orden_board`/`orden_done` + `ordenMenu` + captura OT/meta + admin `orden_reminder`) · `horacio-dash.code.js`.
 
+### ✅ Embarques: captura por tarjeta (NP + cantidad), varias por hora (2026-06-17)
+Brenda dejó de capturar "un número de cajas": ahora registra, por hora, **qué
+tarjeta (NP) retiró y cuántas**, varias por hora. El `real` de la hora = **suma**
+de cantidades (unidad `tarjetas`).
+- **Catálogo CERRADO** `horacio.tarjetas` (NP UNIQUE + alias opcional). Sembradas 24
+  NP de Mapartel. El HxH de Embarques muestra el catálogo en **botones** (2 por fila).
+- **Detalle append-only** `horacio.hxh_tarjetas` (hxh_id→hora_por_hora · tarjeta_id ·
+  numero_parte *snapshot* · cantidad>0). 1 fila HxH + N renglones por hora.
+- **Modo de captura por tablero** `lineas.captura` (`conteo` default | `tarjetas`).
+  Embarques=`tarjetas`; el resto de tableros NO cambia (siguen con su número).
+- **Flujo bot** (solo `captura='tarjetas'`): tocar el tablero → "¿qué tarjeta?"
+  (botones + **➕ Otra** + **✔️ Cerrar la hora (N tarjetas)**) → toca tarjeta →
+  "¿cuántas?" → número → vuelve al menú con lo acumulado → Cerrar → INSERT HxH(real=suma)
+  + N renglones. **➕ Otra** = NP a mano (texto libre) → upsert al catálogo (`ON CONFLICT`)
+  → cantidad. Steps nuevos `hxh_tj_pick|hxh_tj_np|hxh_tj_cant` (ampliado el CHECK,
+  sql/011) y añadidos a `OPEN` (la escalación de no-captura a Nayeli sigue operando).
+- Resumen líder/Dirección ya muestran "47 tarjetas" (usan `lineas.unidad`). El dashboard
+  hereda la unidad correcta; (pendiente opcional) desglose "por NP" en el tablero.
+- **Probado e2e** vía webhook en tablero temporal aislado (3 renglones: catálogo ×2 +
+  ➕ Otra): 1 fila HxH `real=47` + 3 detalle correctos; catálogo creció con la "otra";
+  todo el dato de prueba **limpiado** (catálogo de vuelta en 24). Sin tocar a Brenda viva.
+Fuente: `sql/011_embarques_tarjetas.sql` · `n8n/horacio-bot.code.js`
+(helper `tjPickMenu` + acciones `tj_pick`/`tj_otra`/`tj_done` + steps de texto `hxh_tj_np`/`hxh_tj_cant`).
+
 ### ✅ Dashboard Mapartel — Horacio (2026-06-15)
 Workflow **`Horacio - Dashboard`** (`ng4loQv932n2AIRC`, ACTIVO). Webhook GET
 `/webhook/horacio-dash?token=<DASH_TOKEN>` sirve la **página HTML** (Chart.js, auto-
@@ -187,6 +212,16 @@ resto del tablero igual se ve). Diagnóstico previo: el render es correcto en No
 JSON real; un "no carga" suele ser navegador interno de Telegram / caché / token.
 Fuente: `n8n/horacio-dash.code.js`. Para apagar el espejo de validación no afecta esto.
 Refrescar: `python3 scripts/push_code.py n8n/horacio-dash.code.js ng4loQv932n2AIRC "Horacio Dash"`.
+
+**Rediseño visual minimalista · Powered by NexIA (2026-06-17):** misma capa de
+datos (queries intactas), solo se reescribió la página. Tema **claro minimalista**
+(fondo `#f6f6f8`, tarjetas blancas con borde sutil + sombra suave, radios 16px),
+acento **violeta NexIA `#7c3aed`**, tipografía del sistema con números tabulares.
+Header sticky con marca (rombo NexIA SVG) + footer **"powered by ◆ NexIA"**. KPIs
+con color de estado (cumplimiento semáforo; paros/faltantes/calidad en rojo si >0).
+Gráficas en tema claro (Plan gris/Real violeta; Pareto SMT violeta·PTH ámbar·
+Conformal verde). Se conservó el blindaje de carga (fetch `no-store`, `JSON.parse`
+con fallback). Validado en vivo: página 200, JSON 200, JS del navegador `node --check` OK.
 
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
@@ -264,7 +299,8 @@ Jorge Ramírez (dirección) — todos con `consentimiento=true`. **Scheduler ACT
 
 ### ⏳ Siguientes (al 2026-06-16)
 - [ ] **Relevo Yadira→Gabriela** (vacaciones): reasignar sus 5 tableros a "Gabriela".
-- [ ] Alta de **Brenda** (Embarques) y de **Pamela/Ivonne/NexIA** (resumen).
+- [x] Alta de **Brenda** (Embarques) ✅ — falta **Pamela/Ivonne/NexIA** (resumen).
+- [ ] (Opcional) Dashboard: desglose de Embarques **por tarjeta/NP** del día.
 - [ ] Estándar oficial de **PTH/ola** (ciclo 294 s → pzs/hr) y **Conformal** con Ingeniería.
 - [ ] Estándar por modelo (SMT corre varios; hoy solo TJ000360) — o vía `/orden` diario.
 - [ ] (Opcional) Resúmenes con LLM (hoy por plantilla, sin LLM).
@@ -295,7 +331,7 @@ curl -s ".../bot<TOKEN>/getWebhookInfo"
 - Workflow bot: `VKb215KJk5TdEsEY` (Horacio - Webhook) · fuente `n8n/horacio-bot.code.js`
 - Workflow scheduler: `ilJpIucqEBpKnFgT` (Horacio - Scheduler) · 6 crons (ver snapshot)
 - Workflow dashboard: `ng4loQv932n2AIRC` (Horacio - Dashboard) · fuente `n8n/horacio-dash.code.js`
-- Schema: `horacio` · migraciones en `sql/001`…`sql/010`
+- Schema: `horacio` · migraciones en `sql/001`…`sql/011`
 - Secretos (no en git): `scripts/secrets.env` → BOT_TOKEN, SERVICE_ROLE_KEY, ADMIN_SECRET, DASH_TOKEN
 - Deploy de un Code node: `python3 scripts/push_code.py <archivo> <workflow_id> "<node>"`
 - Chat de prueba / espejo de validación: `5367409334`
