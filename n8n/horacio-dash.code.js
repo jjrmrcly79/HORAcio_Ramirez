@@ -46,6 +46,7 @@ if (q.data !== '1') {
 '.pill{padding:2px 9px;border-radius:99px;font-size:11px;font-weight:600;color:#fff}',
 '.t-Paro{background:#dc2626}.t-Faltante{background:#d97706}.t-Calidad{background:#7c3aed}',
 '.empty{color:var(--mut);font-size:13px;padding:10px 0}',
+'.embk{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:14px}.embk .v{font-size:23px;font-weight:680;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.embk .v small{font-size:13px;color:var(--mut);font-weight:500;margin-left:3px}.embk .l{color:var(--mut);font-size:12px;margin-top:2px}',
 '.foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;color:var(--mut);font-size:12px;flex-wrap:wrap}',
 '.foot .pw{display:flex;align-items:center;gap:6px;color:#52525b}.foot .pw b{color:var(--accent);font-weight:700}',
 '</style></head><body>',
@@ -54,6 +55,11 @@ if (q.data !== '1') {
 '<div class="kpis" id="kpis"></div>',
 '<div class="grid2"><div class="card"><h2>Cumplimiento por tablero (hoy)</h2><div id="tableros"></div></div>',
 '<div class="card"><h2>¿Quién está subiendo su info? (hoy)</h2><div id="hb"></div></div></div>',
+'<div class="card" id="embCard" style="display:none"><h2>📦 Embarques — tarjetas retiradas (hoy)</h2>',
+'<div class="embk" id="embKpis"></div>',
+'<div class="grid2"><div><div class="muted" style="margin-bottom:6px">Por número de parte</div><canvas id="cEmbNP" height="180"></canvas></div>',
+'<div><div class="muted" style="margin-bottom:6px">Por hora</div><canvas id="cEmbHora" height="180"></canvas></div></div>',
+'<div id="embEmpty"></div></div>',
 '<div class="card"><h2>Escalamientos abiertos ahora</h2><div id="esc"></div></div>',
 '<div class="grid2"><div class="card"><h2>Real vs Plan por hora (hoy)</h2><canvas id="cHora" height="160"></canvas></div>',
 '<div class="card"><h2>Pareto de causas por área (7 días)</h2><canvas id="cPar" height="160"></canvas><div id="topArea" style="margin-top:10px"></div></div></div>',
@@ -61,7 +67,7 @@ if (q.data !== '1') {
 '</div>',
 '<script>',
 'var TK=new URLSearchParams(location.search).get("token");',
-'var chHora=null,chPar=null;',
+'var chHora=null,chPar=null,chENP=null,chEH=null;',
 'function semColor(s){return s=="\\uD83D\\uDFE2"?"var(--ok)":s=="\\uD83D\\uDFE1"?"var(--warn)":s=="\\uD83D\\uDD34"?"var(--bad)":"#64748b"}',
 'function hhmm(t){if(!t)return"—";var d=new Date(t);if(isNaN(d))return"—";return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}',
 'function el(h){var d=document.createElement("div");d.innerHTML=h;return d.firstChild}',
@@ -93,6 +99,7 @@ if (q.data !== '1') {
 '      et+="</table>";document.getElementById("esc").innerHTML=et;}else{document.getElementById("esc").innerHTML="<div class=\\"empty\\">Nada escalado abierto 🎉</div>"}',
 '    try{drawHora(d.porHora);drawPar(d.pareto);}catch(ce){document.getElementById("sub").textContent+=" · (graficas no cargaron)"}',
 '    var ta="<table><tr><th>Área</th><th>Causa #1</th><th>Veces</th></tr>";d.topArea.forEach(function(t){ta+="<tr><td><b>"+t.area+"</b> <span class=\\"muted\\">"+t.lider+"</span></td><td>"+(t.causa||"— sin causas —")+"</td><td>"+(t.n||0)+"</td></tr>"});ta+="</table>";document.getElementById("topArea").innerHTML=ta;',
+'    renderEmb(d.embarques);',
 '  }catch(e){document.getElementById("sub").textContent="error: "+e.message}',
 '}',
 'function kpi(v,l,c){return "<div class=\\"kpi\\"><div class=\\"v\\""+(c?" style=\\"color:"+c+"\\"":"")+">"+v+"</div><div class=\\"l\\">"+l+"</div></div>"}',
@@ -102,6 +109,17 @@ if (q.data !== '1') {
 '  var lb=p.causas.map(function(c){return c.replace(/^[\\s\\W]+/,"")});',
 '  var ds=p.areas.map(function(a){return {label:a.label,data:p.data[a.key],backgroundColor:col[a.key]||"#9ca3af",borderRadius:3}});',
 '  if(chPar)chPar.destroy();chPar=new Chart(document.getElementById("cPar"),{type:"bar",data:{labels:lb,datasets:ds},options:{indexAxis:"y",plugins:{legend:{labels:{color:"#52525b",boxWidth:10,boxHeight:10,usePointStyle:true,pointStyle:"circle"}}},scales:{x:{stacked:true,beginAtZero:true,grid:{color:"#f0f0f2"},border:{display:false},ticks:{color:"#71717a",precision:0}},y:{stacked:true,grid:{display:false},border:{display:false},ticks:{color:"#3f3f46",autoSkip:false}}}}})}',
+'function stat(v,l){return "<div><div class=\\"v\\">"+v+"</div><div class=\\"l\\">"+l+"</div></div>"}',
+'function renderEmb(e){var card=document.getElementById("embCard");if(!card)return;',
+'  if(!e||!e.activo){card.style.display="none";return}card.style.display="";',
+'  var hasData=(e.porNP&&e.porNP.length)||(e.porHora&&e.porHora.length);',
+'  document.getElementById("embKpis").innerHTML=stat(e.total+" <small>tarjetas</small>","hoy")+stat(e.nps,"NP distintos")+stat(e.ultima||"—","última hora")+stat(e.ultimaCap||"—","última captura");',
+'  document.getElementById("embEmpty").innerHTML=hasData?"":"<div class=\\"empty\\">Aún no hay tarjetas registradas hoy.</div>";',
+'  try{drawEmbNP(e.porNP||[]);drawEmbHora(e.porHora||[]);}catch(ce){}}',
+'function drawEmbNP(rows){var lb=rows.map(function(r){return r.np});var dt=rows.map(function(r){return r.cant});',
+'  if(chENP)chENP.destroy();chENP=new Chart(document.getElementById("cEmbNP"),{type:"bar",data:{labels:lb,datasets:[{label:"Tarjetas",data:dt,backgroundColor:"#7c3aed",borderRadius:3}]},options:{indexAxis:"y",plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,grid:{color:"#f0f0f2"},border:{display:false},ticks:{color:"#71717a",precision:0}},y:{grid:{display:false},border:{display:false},ticks:{color:"#3f3f46",autoSkip:false}}}}})}',
+'function drawEmbHora(rows){var lb=rows.map(function(r){return r.slot});var dt=rows.map(function(r){return r.cant});',
+'  if(chEH)chEH.destroy();chEH=new Chart(document.getElementById("cEmbHora"),{type:"bar",data:{labels:lb,datasets:[{label:"Tarjetas",data:dt,backgroundColor:"#a78bfa",borderRadius:4}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false},border:{display:false},ticks:{color:"#71717a"}},y:{beginAtZero:true,grid:{color:"#f0f0f2"},border:{display:false},ticks:{color:"#71717a",precision:0}}}}})}',
 'load();setInterval(load,30000);',
 '</script></body></html>'
   ].join('');
@@ -115,7 +133,7 @@ const horaNum = Number(now.toFormat('HH'));
 const minNum = Number(now.toFormat('mm'));
 const expectedSlots = Math.max(0, Math.min(9, (horaNum - 7) + (minNum >= 30 ? 1 : 0))); // ventanas de :30 ya cerradas (6:30→7:30 …)
 
-const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, l.unidad, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::bigint AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::bigint AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta FROM horacio.lineas l LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
+const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, l.unidad, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::bigint AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::bigint AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta FROM horacio.lineas l LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa AND l.captura<>'tarjetas' GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
 const tableros = tab.map((t) => {
   const plan = Number(t.plan) || 0, real = Number(t.real) || 0;
   const pct = plan > 0 ? Math.round(real / plan * 100) : null;
@@ -145,7 +163,7 @@ const esc = await pg(`SELECT tipo, tablero, detalle, quien, ts, acuse_ts FROM (
 const nowMs = now.toMillis();
 const escal = esc.map((e) => ({ tipo: e.tipo, tablero: e.tablero, detalle: e.detalle, quien: e.quien, haceMin: Math.max(0, Math.round((nowMs - DateTime.fromISO(e.ts).toMillis()) / 60000)), acuse: !!e.acuse_ts }));
 
-const ph = await pg(`SELECT hora_slot, COALESCE(SUM(plan) FILTER (WHERE NOT sin_dato),0)::bigint AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::bigint AS real FROM horacio.hora_por_hora WHERE fecha='${fecha}' GROUP BY hora_slot ORDER BY hora_slot`);
+const ph = await pg(`SELECT hora_slot, COALESCE(SUM(plan) FILTER (WHERE NOT sin_dato),0)::bigint AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::bigint AS real FROM horacio.hora_por_hora WHERE fecha='${fecha}' AND linea_id IN (SELECT id FROM horacio.lineas WHERE captura<>'tarjetas') GROUP BY hora_slot ORDER BY hora_slot`);
 const porHora = ph.map((r) => ({ slot: r.hora_slot, plan: Number(r.plan) || 0, real: Number(r.real) || 0 }));
 
 // líder por área (grupo) para la leyenda
@@ -171,6 +189,26 @@ const topArea = AREAS.map((k) => {
   return { area: grpName(k), lider: friendly(areaLeader[k]), causa, n };
 });
 
+// ===== Embarques (captura='tarjetas') — detalle aparte, fuera de cumplimiento =====
+const embLines = await pg("SELECT id FROM horacio.lineas WHERE captura='tarjetas' AND activa");
+let embarques = { activo: false };
+if (embLines.length) {
+  const ids = embLines.map((r) => `'${r.id}'`).join(',');
+  const tot = await pg(`SELECT COALESCE(SUM(d.cantidad),0)::bigint AS total, COUNT(DISTINCT d.numero_parte)::int AS nps, MAX(h.hora_slot) AS ultima, to_char(MAX(h.ts) AT TIME ZONE 'America/Mexico_City','HH24:MI') AS ultcap FROM horacio.hxh_tarjetas d JOIN horacio.hora_por_hora h ON h.id=d.hxh_id WHERE h.linea_id IN (${ids}) AND h.fecha='${fecha}'`);
+  const byNP = await pg(`SELECT d.numero_parte AS np, SUM(d.cantidad)::bigint AS cant FROM horacio.hxh_tarjetas d JOIN horacio.hora_por_hora h ON h.id=d.hxh_id WHERE h.linea_id IN (${ids}) AND h.fecha='${fecha}' GROUP BY d.numero_parte ORDER BY cant DESC, d.numero_parte LIMIT 12`);
+  const byHora = await pg(`SELECT h.hora_slot AS slot, SUM(d.cantidad)::bigint AS cant FROM horacio.hxh_tarjetas d JOIN horacio.hora_por_hora h ON h.id=d.hxh_id WHERE h.linea_id IN (${ids}) AND h.fecha='${fecha}' GROUP BY h.hora_slot ORDER BY h.hora_slot`);
+  const T = tot[0] || {};
+  embarques = {
+    activo: true,
+    total: Number(T.total) || 0,
+    nps: Number(T.nps) || 0,
+    ultima: T.ultima || null,
+    ultimaCap: T.ultcap || null,
+    porNP: byNP.map((r) => ({ np: r.np, cant: Number(r.cant) || 0 })),
+    porHora: byHora.map((r) => ({ slot: r.slot, cant: Number(r.cant) || 0 })),
+  };
+}
+
 const payload = {
   fecha, hora: now.toFormat('HH:mm'),
   kpis: {
@@ -180,6 +218,6 @@ const payload = {
     faltAbiertos: Number(K.falt_ab) || 0, calAbiertos: Number(K.cal_ab) || 0,
     acuseMin: (K.acuse_min == null ? null : Number(K.acuse_min)),
   },
-  tableros, lideres, escalamientos: escal, porHora, pareto, topArea,
+  tableros, lideres, escalamientos: escal, porHora, pareto, topArea, embarques,
 };
 return [{ json: { body: JSON.stringify(payload), contentType: 'application/json; charset=utf-8' } }];

@@ -223,6 +223,18 @@ Gráficas en tema claro (Plan gris/Real violeta; Pareto SMT violeta·PTH ámbar�
 Conformal verde). Se conservó el blindaje de carga (fetch `no-store`, `JSON.parse`
 con fallback). Validado en vivo: página 200, JSON 200, JS del navegador `node --check` OK.
 
+**Embarques con sección propia + fuera de cumplimiento (2026-06-17):** Embarques
+(`captura='tarjetas'`, unidad tarjetas) ya **no** se mezcla con producción: se sacó
+de la lista *Cumplimiento por tablero*, del KPI "tableros reportando" y de la gráfica
+*Real vs Plan por hora* (filtro `l.captura<>'tarjetas'` — antes sumaba tarjetas con
+piezas). Nueva tarjeta **"📦 Embarques — tarjetas retiradas (hoy)"** con mini-stats
+(total tarjetas, NP distintos, última hora, última captura MX) + **dos gráficas**
+desde `hxh_tarjetas`: **por número de parte** (barras horiz. violeta, top 12) y
+**por hora** (barras por ventana HxH). Vacío elegante si no hay tarjetas hoy; la
+tarjeta se oculta si no existe ningún tablero `captura='tarjetas'`. `ultimaCap` vía
+`to_char(MAX(ts) AT TIME ZONE 'America/Mexico_City')`. Probado e2e con datos temporales
+(total/NP/por-hora correctos) y limpiado. Fuente: `n8n/horacio-dash.code.js`.
+
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
 auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**
