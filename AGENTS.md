@@ -192,6 +192,13 @@ de cantidades (unidad `tarjetas`).
   todo el dato de prueba **limpiado** (catálogo de vuelta en 24). Sin tocar a Brenda viva.
 Fuente: `sql/011_embarques_tarjetas.sql` · `n8n/horacio-bot.code.js`
 (helper `tjPickMenu` + acciones `tj_pick`/`tj_otra`/`tj_done` + steps de texto `hxh_tj_np`/`hxh_tj_cant`).
+**Fix (2026-06-17):** a Brenda no le salía la lista — su sesión venía de un ping
+**anterior al deploy** y el snapshot del tablero aún no traía `captura`, así que el
+tap caía a la ruta numérica (`action=hxh_board`, no `hxh_board_tj`). Ahora `hxh_board`
+**re-consulta `lineas.captura` desde BD** si falta en el snapshot → robusto ante
+sesiones abiertas durante un deploy. Probado con sesión "vieja" simulada → abre la lista.
+Pendiente UX: Brenda intentó teclear toda la lista en un mensaje ("NP cantidad" ×4);
+valorar parseo de texto libre además de los botones.
 
 ### ✅ Dashboard Mapartel — Horacio (2026-06-15)
 Workflow **`Horacio - Dashboard`** (`ng4loQv932n2AIRC`, ACTIVO). Webhook GET

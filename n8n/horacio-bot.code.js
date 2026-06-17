@@ -574,7 +574,11 @@ if (action === 'hxh_board') {
   const board = s.d.boards.find((x) => x.linea_id === id);
   if (!board) { await tg('sendMessage', { chat_id, text: 'Ese tablero ya no está en este ping.' }); return [{ json: { action: 'board-missing' } }]; }
   if (s.d.done.includes(id)) { await hxhBoardMenu(s.d); return [{ json: { action: 'board-already' } }]; }
-  if (board.captura === 'tarjetas') {
+  // robustez: confirmar el modo de captura desde BD (sesiones creadas por un
+  // ping anterior a un deploy no traen 'captura' en el snapshot → caerían a la ruta numérica)
+  let captura = board.captura;
+  if (!captura) { const cr = await pg(`SELECT captura FROM horacio.lineas WHERE id='${esc(id)}'`); captura = (cr && cr.length && cr[0].captura) ? cr[0].captura : 'conteo'; }
+  if (captura === 'tarjetas') {
     const d = Object.assign({}, s.d, { cur: id, reng: [], tj: null });
     await tjPickMenu(d);
     return [{ json: { action: 'hxh_board_tj' } }];
