@@ -226,6 +226,16 @@ semáforo por tablero, **heartbeat de captura por líder** (quién sube info), t
 **escalamientos abiertos**, barras real vs plan por hora, y **Pareto de causas apilado por área/líder** (SMT-Viridiana,
 PTH-Yadira, Conformal-Chío; combina paros formales + causas de merma del HxH ❌, 7d). Debajo, mini-tabla "Causa #1 por área".
 Cada tablero muestra además **OT · meta/h** (de `/orden`) y la unidad correcta (cajas/piezas).
+**Cumplimiento sin contaminar + bandera de revisar (2026-06-18):** un proceso no puede
+superar el 100%. (1) **% por tablero topado a 100** (`pct=min(pctRaw,100)`; se guarda
+`pctRaw` real). (2) **Número final capado:** el agregado usa `Σ min(real, meta) / Σ meta`
+(cada tablero aporta máx. su meta) → imposible pasar de 100%, un tablero disparado ya no
+infla el total. (3) **Bandera `over`** (real > meta×1.05 → >105%): los tableros sobre su
+meta se marcan con ⚠️ y se listan en un **aviso ámbar** (`#revisar`/`.revbox`) con su %
+real, para revisar si la meta está mal o la captura inflada. Detectó casos reales (PTH 238%,
+Conformal-Yadira 126%). El número del KPI sigue siendo `sumReal/sumPlan` pero `sumReal` ya
+viene capado. Fuente: `horacio-dash.code.js` (tableros map: pctRaw/pct/over · payload.revisar).
+
 **Notas explicativas en los KPIs (2026-06-18):** cada casilla KPI es **tocable** (ícono
 ⓘ); al tocarla despliega qué mide (y `title` para hover en escritorio). Textos por KPI en
 `kpi(v,l,c,info)` → cumplimiento, tableros reportando, paros abiertos, paro acumulado,

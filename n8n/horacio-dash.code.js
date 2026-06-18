@@ -38,6 +38,7 @@ if (q.data !== '1') {
 '.kpi:hover{border-color:#d8d2ea}.kpi .q{position:absolute;top:10px;right:12px;width:16px;height:16px;border-radius:50%;border:1px solid var(--bd);color:var(--mut);font-size:11px;line-height:14px;text-align:center;font-weight:700}',
 '.kpi .v{font-size:27px;font-weight:680;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.kpi .l{color:var(--mut);font-size:12px;margin-top:3px}',
 '.kpi .ki{display:none;margin-top:9px;padding-top:9px;border-top:1px solid var(--bd);color:var(--mut);font-size:11.5px;line-height:1.45}.kpi.open .ki{display:block}.kpi.open .q{background:var(--accent);color:#fff;border-color:var(--accent)}',
+'.revbox{background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:12px;padding:11px 14px;font-size:12.5px;line-height:1.5;margin-bottom:16px}.revbox b{font-weight:700}',
 '.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:820px){.grid2{grid-template-columns:1fr}}',
 '.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)}',
 '.card h2{font-size:12px;margin:0 0 12px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;font-weight:600}',
@@ -55,6 +56,7 @@ if (q.data !== '1') {
 '<header><span class="brand"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="5.5" width="13" height="13" rx="3" transform="rotate(45 12 12)" fill="#7c3aed"/></svg><h1>Horacio <span class="dot">· Mapartel</span></h1></span><span class="sub" id="sub">cargando…</span></header>',
 '<div class="wrap">',
 '<div class="kpis" id="kpis"></div>',
+'<div id="revisar"></div>',
 '<div class="grid2"><div class="card"><h2>Cumplimiento por tablero (hoy)</h2><div id="tableros"></div></div>',
 '<div class="card"><h2>¿Quién está subiendo su info? (hoy)</h2><div id="hb"></div></div></div>',
 '<div class="card" id="embCard" style="display:none"><h2>📦 Embarques — tarjetas retiradas (hoy)</h2>',
@@ -83,16 +85,17 @@ if (q.data !== '1') {
 '    var k=d.kpis;',
 '    var cumC=k.cumplimiento==null?"":(k.cumplimiento>=95?"var(--ok)":k.cumplimiento>=80?"var(--warn)":"var(--bad)");',
 '    document.getElementById("kpis").innerHTML=',
-'      kpi((k.cumplimiento==null?"—":k.cumplimiento+"%"),"Cumplimiento hoy",cumC,"% de piezas reales vs meta, contando solo los tableros que hoy tienen meta (la OT que fija Daniel). 100% = se cumplió el plan. Los tableros sin meta (⚪) no entran aquí.")+',
+'      kpi((k.cumplimiento==null?"—":k.cumplimiento+"%"),"Cumplimiento hoy",cumC,"% de piezas reales vs meta, contando solo los tableros que hoy tienen meta (la OT que fija Daniel). 100% = se cumplió el plan. Cada proceso cuenta como MÁXIMO 100% (no puede superar su meta), así un tablero disparado no contamina el total; los que reportan por encima se marcan abajo para revisar. Los tableros sin meta (⚪) no entran aquí.")+',
 '      kpi(k.reportando+"/"+k.tableros,"Tableros reportando","","Cuántos tableros ya subieron al menos una hora con dato hoy, del total de tableros activos.")+',
 '      kpi(k.parosAbiertos,"Paros abiertos",k.parosAbiertos>0?"var(--bad)":"","Paros reportados que siguen SIN cerrarse (nadie ha tocado ‘✅ Ya quedó’) en este momento.")+',
 '      kpi(k.minParo+" min","Paro acumulado hoy","","Suma de minutos detenidos hoy, de los paros ya cerrados — el tiempo total que estuvo parado.")+',
 '      kpi(k.faltAbiertos,"Faltantes abiertos",k.faltAbiertos>0?"var(--bad)":"","Faltantes de material reportados que aún no se marcan como surtidos.")+',
 '      kpi(k.calAbiertos,"Calidad abierta",k.calAbiertos>0?"var(--bad)":"","Reportes de calidad que siguen sin cerrarse.")+',
 '      kpi((k.acuseMin==null?"—":k.acuseMin+" min"),"Acuse prom. (7d)","","Minutos promedio desde que se reporta un paro hasta que el responsable lo acusa (‘Visto 👍’), en los últimos 7 días. Mide la reacción, no la resolución. Solo cuenta paros que sí se acusaron.");',
-'    var ht="";d.tableros.forEach(function(t){var p=t.pct==null?(t.real+" "+(t.unidad||"pzs")):(t.real+"/"+t.plan+" "+t.pct+"%");',
-'      ht+="<div class=\\"tab\\"><div>"+t.sem+" <b>"+t.nombre+"</b><div class=\\"muted\\">"+(t.ot?("OT "+t.ot+(t.meta!=null?" · meta "+t.meta+"/h":"")+" · "):"")+t.grupo+" · hora reportada "+(t.ultima||"—")+(t.sd?" · "+t.sd+" sin dato":"")+"</div></div><div class=\\"num\\" style=\\"text-align:right\\">"+p+"</div></div>"});',
+'    var ht="";d.tableros.forEach(function(t){var p=t.pct==null?(t.real+" "+(t.unidad||"pzs")):(t.real+"/"+t.plan+" "+t.pct+"%"+(t.over?" ⚠️":""));',
+'      ht+="<div class=\\"tab\\"><div>"+t.sem+" <b>"+t.nombre+"</b><div class=\\"muted\\">"+(t.ot?("OT "+t.ot+(t.meta!=null?" · meta "+t.meta+"/h":"")+" · "):"")+t.grupo+" · hora reportada "+(t.ultima||"—")+(t.sd?" · "+t.sd+" sin dato":"")+(t.over?" · ⚠️ reportó "+t.pctRaw+"% — revisar meta/captura":"")+"</div></div><div class=\\"num\\" style=\\"text-align:right\\">"+p+"</div></div>"});',
 '    document.getElementById("tableros").innerHTML=ht||"<div class=\\"empty\\">Sin datos hoy</div>";',
+'    var rev=d.revisar||[];document.getElementById("revisar").innerHTML=rev.length?("<div class=\\"revbox\\"><b>⚠️ "+rev.length+" tablero(s) por encima de su meta</b> (&gt;105%) — revisar meta o captura: "+rev.map(function(x){return x.nombre+" ("+x.pctRaw+"%)";}).join(" · ")+". El número final ya cuenta cada proceso máx. 100%.</div>"):"";',
 '    var hh="";d.lideres.forEach(function(l){var pc=l.pct==null?0:l.pct;var c=pc>=80?"var(--ok)":pc>=50?"var(--warn)":"var(--bad)";',
 '      hh+="<div class=\\"tab\\"><div><b>"+l.nombre+"</b><div class=\\"bar\\"><i style=\\"width:"+Math.min(pc,100)+"%;background:"+c+"\\"></i></div></div><div class=\\"num\\" style=\\"text-align:right\\">"+l.reportados+"/"+l.esperados+"<div class=\\"muted\\" style=\\"font-weight:400\\">captura "+(l.ultima||"—")+"</div></div></div>"});',
 '    document.getElementById("hb").innerHTML=hh||"<div class=\\"empty\\">Sin líderes</div>";',
@@ -138,12 +141,15 @@ const expectedSlots = Math.max(0, Math.min(9, (horaNum - 7) + (minNum >= 30 ? 1 
 const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, l.unidad, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::bigint AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::bigint AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta FROM horacio.lineas l LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa AND l.captura<>'tarjetas' GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
 const tableros = tab.map((t) => {
   const plan = Number(t.plan) || 0, real = Number(t.real) || 0;
-  const pct = plan > 0 ? Math.round(real / plan * 100) : null;
+  const pctRaw = plan > 0 ? Math.round(real / plan * 100) : null;     // % real sin topar (puede pasar de 100)
+  const pct = pctRaw == null ? null : Math.min(pctRaw, 100);           // % mostrado: topado a 100
+  const over = plan > 0 && real > plan * 1.05;                         // reportó >105% de su meta → revisar
   const sem = pct == null ? '⚪' : (pct >= 95 ? '🟢' : (pct >= 80 ? '🟡' : '🔴'));
-  return { codigo: t.codigo, nombre: t.nombre, grupo: t.grupo, unidad: t.unidad || 'pzs', plan, real, pct, sem, ultima: t.ultima || null, sd: Number(t.sd) || 0, ot: t.ot || null, meta: t.meta != null ? Number(t.meta) : null };
+  return { codigo: t.codigo, nombre: t.nombre, grupo: t.grupo, unidad: t.unidad || 'pzs', plan, real, pct, pctRaw, over, sem, ultima: t.ultima || null, sd: Number(t.sd) || 0, ot: t.ot || null, meta: t.meta != null ? Number(t.meta) : null };
 });
 const conMeta = tableros.filter((t) => t.plan > 0);
-const sumPlan = conMeta.reduce((a, t) => a + t.plan, 0), sumReal = conMeta.reduce((a, t) => a + t.real, 0);
+// agregado SIN contaminar: cada tablero aporta como máximo su meta → min(real, plan)
+const sumPlan = conMeta.reduce((a, t) => a + t.plan, 0), sumReal = conMeta.reduce((a, t) => a + Math.min(t.real, t.plan), 0);
 
 const kp = await pg(`SELECT (SELECT COUNT(*) FROM horacio.paros WHERE estado='abierto')::int AS paros_ab, (SELECT COALESCE(SUM(duracion_min),0) FROM horacio.paros WHERE ts_inicio::date='${fecha}')::int AS min_paro, (SELECT COUNT(*) FROM horacio.faltantes WHERE estado<>'cerrado')::int AS falt_ab, (SELECT COUNT(*) FROM horacio.calidad WHERE estado<>'cerrado')::int AS cal_ab, (SELECT ROUND(AVG(EXTRACT(EPOCH FROM (acuse_ts-ts_inicio))/60.0))::int FROM horacio.paros WHERE acuse_ts IS NOT NULL AND ts_inicio::date >= '${fecha}'::date-6) AS acuse_min`);
 const K = kp[0] || {};
@@ -214,12 +220,13 @@ if (embLines.length) {
 const payload = {
   fecha, hora: now.toFormat('HH:mm'),
   kpis: {
-    cumplimiento: sumPlan > 0 ? Math.round(sumReal / sumPlan * 100) : null,
+    cumplimiento: sumPlan > 0 ? Math.min(100, Math.round(sumReal / sumPlan * 100)) : null,
     reportando: tableros.filter((t) => t.ultima).length, tableros: tableros.length,
     parosAbiertos: Number(K.paros_ab) || 0, minParo: Number(K.min_paro) || 0,
     faltAbiertos: Number(K.falt_ab) || 0, calAbiertos: Number(K.cal_ab) || 0,
     acuseMin: (K.acuse_min == null ? null : Number(K.acuse_min)),
   },
   tableros, lideres, escalamientos: escal, porHora, pareto, topArea, embarques,
+  revisar: tableros.filter((t) => t.over).map((t) => ({ nombre: t.nombre, pctRaw: t.pctRaw, real: t.real, plan: t.plan, unidad: t.unidad })),
 };
 return [{ json: { body: JSON.stringify(payload), contentType: 'application/json; charset=utf-8' } }];
