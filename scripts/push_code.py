@@ -34,7 +34,7 @@ def main():
     s = load_secrets()
     APIKEY, BASE = find_n8n()
     code = open(code_file, encoding='utf-8').read()
-    code = code.replace('<BOT_TOKEN>', s['BOT_TOKEN']).replace('<SERVICE_ROLE_KEY>', s['SERVICE_ROLE_KEY']).replace('<ADMIN_SECRET>', s.get('ADMIN_SECRET', '')).replace('<DASH_TOKEN>', s.get('DASH_TOKEN', '')).replace('<PANEL_TOKEN>', s.get('PANEL_TOKEN', ''))
+    code = code.replace('<BOT_TOKEN>', s['BOT_TOKEN']).replace('<SERVICE_ROLE_KEY>', s['SERVICE_ROLE_KEY']).replace('<ADMIN_SECRET>', s.get('ADMIN_SECRET', '')).replace('<DASH_TOKEN>', s.get('DASH_TOKEN', '')).replace('<PANEL_TOKEN>', s.get('PANEL_TOKEN', '')).replace('<ANTHROPIC_API_KEY>', s.get('ANTHROPIC_API_KEY', ''))
 
     def req(method, path, data=None):
         body = json.dumps(data).encode() if data is not None else None

@@ -375,6 +375,30 @@ manda un mensaje cálido al cruzar **inicio** (1ª captura), **mitad** (≥50%) 
 (idempotente). Probado e2e (inicio→mitad→completo). Relacionado: dashboard heartbeat ahora
 con denominador fijo del día (nº tableros × 9). Fuente: `n8n/horacio-bot.code.js`.
 
+### ✅ Encuesta de salida + plática con IA (Claude Haiku) (2026-06-18, sql/018)
+**Primer uso de LLM en el bot.** Cron **`Cron Encuesta 18:00`** (`0 18 * * 1-5`, en el
+Scheduler) → admin **`encuesta_salida`** → a cada líder activa: *"¿cómo estuvo tu día?"*
+botones 😀 bien / 😐 normal / 😟 pesado.
+- Tap mood (`fbm_<mood>`) → crea fila `horacio.feedback` (mood) → pide texto libre (step
+  `fb_texto`). Si responde "no/nada/gracias" → cierra. Si escribe algo → arranca **plática**.
+- **Plática IA** (step `fb_chat`): `askHoracio(msgs)` llama a **Claude Haiku**
+  (`claude-haiku-4-5-20251001`, `api.anthropic.com/v1/messages` vía `this.helpers.httpRequest`)
+  con `FB_SYS` (personalidad de Horacio: cálido, breve, contiene, no diagnostica; si algo
+  serio → avisa que lo pasa a RH). Máx **6 turnos**, botón **"✅ Cerrar la plática"** (`fb_cerrar`).
+- **Escalación a RH:** si mood = `pesado`, al cerrar marca `feedback.escalado` y avisa a
+  `rol='rh'` (Ivonne) **sin compartir el contenido** (solo "tuvo un día pesado, dale
+  seguimiento"). Privacidad: feedback NO va al dashboard de Dirección.
+- `askArea`/`/start` ahora tiene opción **🤝 Recursos Humanos (Ivonne)** (rol `rh`) para
+  que RH se registre y reciba las escalaciones.
+- **Secreto:** `ANTHROPIC_API_KEY` en `scripts/secrets.env` (reusada del bot de la tienda;
+  sustituida por `push_code.py`, placeholder `<ANTHROPIC_API_KEY>`).
+- `preview_chat` en `encuesta_salida` para probar sin avisar al piso. Probado e2e
+  (mood pesado → IA conversó → cerró → escalado + feedback guardado). Steps `fb_texto`/`fb_chat`
+  y flujo `feedback` (CHECK ampliado, sql/018). Fuente: `n8n/horacio-bot.code.js`.
+> ⚠️ Pendiente operativo: registrar a **Ivonne (RH)** con `/start → 🤝 RH` para que las
+> escalaciones de feedback lleguen (hoy aún nadie con rol `rh` + chat).
+> Workflow scheduler ahora con **7 crons** (se sumó Cron Encuesta 18:00).
+
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
 auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**
