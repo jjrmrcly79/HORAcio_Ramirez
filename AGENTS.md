@@ -288,6 +288,32 @@ panel **operativo** para líder de área/supervisión. Workflow **`Horacio - Pan
   (compartir SOLO con supervisión — tiene escritura). Refrescar code:
   `python3 scripts/push_code.py n8n/horacio-panel.code.js 4sJAO9urzrgQowJB "Horacio Panel"`.
 
+### ✅ Panel: login por PIN (cada usuario) (2026-06-18, sql/015)
+El panel ahora **exige login (nombre + PIN) para ver Y escribir** (el token de la URL
+es el primer candado; el PIN, el segundo). Decisión: **admin asigna los PIN**, login
+gatea todo.
+- **Modelo (sql/015):** `personas` += `pin_hash` (bcrypt vía `pgcrypto crypt/gen_salt('bf')`)
+  · `es_admin` (admins iniciales: **Daniel Nava** y **Jorge Ramírez**, rol paros/direccion)
+  · `pin_intentos`/`pin_bloqueo_ts` (5 fallos → bloqueo 15 min). Tabla **`panel_sesiones`**
+  (token opaco `gen_random_bytes`, expira 12 h). Todo el cripto se hace en la BD (el Code
+  node no necesita librerías).
+- **Login:** `data=who` (solo token URL) lista personas para el picker → POST `login`
+  {persona_id,pin} → verifica bcrypt en SQL → crea sesión → devuelve token de sesión (el
+  cliente lo guarda en sessionStorage, con fallback en memoria si está bloqueado). `data=1`
+  exige `&s=<sesión>`; sin sesión → `{code:'auth'}` → el cliente muestra el login.
+- **Bootstrap:** el 1er admin SIN PIN lo **crea** (`set_own_pin`, solo admin sin pin) y entra;
+  de ahí asigna los demás. Sección **"Personas / PIN"** (solo admin): asignar/resetear PIN
+  (`set_pin`) y hacer/quitar admin (`toggle_admin`).
+- **Escrituras firmadas por la SESIÓN:** `capturado_por` = nombre verificado de la sesión
+  (ya no se confía en un `by` del cliente). Acciones admin (`set_pin`/`toggle_admin`) exigen
+  `es_admin`.
+- Probado e2e (personas temporales, sin tocar PIN reales): gate sin sesión, bootstrap,
+  asignar PIN, login, rechazo de no-admin, backfill firmado, sesión inválida, bloqueo por
+  5 intentos; JS navegador OK; limpiado. Fuente: `horacio-panel.code.js` · `sql/015_panel_pin.sql`.
+- **Arranque real:** Daniel o Jorge abre el panel → elige su nombre → **crea su PIN** →
+  pestaña "Personas / PIN" → asigna PIN a cada quien y lo reparte. Los demás entran con
+  nombre + su PIN.
+
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
 auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**
@@ -397,7 +423,7 @@ curl -s ".../bot<TOKEN>/getWebhookInfo"
 - Workflow scheduler: `ilJpIucqEBpKnFgT` (Horacio - Scheduler) · 6 crons (ver snapshot)
 - Workflow dashboard: `ng4loQv932n2AIRC` (Horacio - Dashboard) · fuente `n8n/horacio-dash.code.js`
 - Workflow panel: `4sJAO9urzrgQowJB` (Horacio - Panel, GET+POST `/horacio-panel`) · fuente `n8n/horacio-panel.code.js`
-- Schema: `horacio` · migraciones en `sql/001`…`sql/014`
+- Schema: `horacio` · migraciones en `sql/001`…`sql/015`
 - Secreto extra: `PANEL_TOKEN` en `scripts/secrets.env` (token del panel de captura)
 - Secretos (no en git): `scripts/secrets.env` → BOT_TOKEN, SERVICE_ROLE_KEY, ADMIN_SECRET, DASH_TOKEN
 - Deploy de un Code node: `python3 scripts/push_code.py <archivo> <workflow_id> "<node>"`
