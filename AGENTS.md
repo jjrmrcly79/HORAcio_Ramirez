@@ -357,6 +357,16 @@ nada se infla):
   el resumen solo a ese chat y **devuelve el texto** en la respuesta (probar sin avisar a
   Dirección). Fuente: `n8n/horacio-bot.code.js` (admin `resumen_dir`).
 
+### ✅ Paros: acción del dueño + duración confirmada (2026-06-18, sql/016)
+Backlog R3-HDB. (4 · R3-HDB-02) Al tocar **"Visto 👍"**, el dueño ahora recibe
+*"¿Qué acción vas a tomar?"* → escribe la **acción (inmediata + correctiva/preventiva)**
+→ se guarda en `paros.accion` y se le **avisa a la líder** la acción. (6 · R3-HDB-04) Al
+tocar **"✅ Ya quedó"** ya no se auto-calcula `now()-ts_inicio` (inflaba: caso SMT 113 min
+por cierre tardío); ahora **pregunta la duración real** con botones (15/30/45/60/90/120 +
+"Otro…") y guarda ese valor. Steps nuevos `paro_accion`/`paro_dur` (CHECK ampliado, sql/016);
+callbacks `pdur_<id>_<min>`/`pdurx_<id>`; helper `closeParo`. Probado e2e (paro de 113 min →
+acción guardada + cerrado con 30 min confirmados). Fuente: `n8n/horacio-bot.code.js`.
+
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
 auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**

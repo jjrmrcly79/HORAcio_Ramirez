@@ -345,6 +345,14 @@ const tjPickMenu = async (d) => {
   await setSess('hxh', 'hxh_tj_pick', d);
   await tg('sendMessage', { chat_id, text: `📦 Embarques · ${d.slot}: ¿qué tarjeta retiraste? Elige una por una.${lista}`, reply_markup: { inline_keyboard: rows } });
 };
+// cierra un paro con la duración (en min) que confirmó la líder (no inflada por cierre tardío)
+const closeParo = async (paroid, min) => {
+  const m = Number(min);
+  const r = await pg(`UPDATE horacio.paros SET ts_fin=now(), estado='cerrado', duracion_min=${m} WHERE id='${esc(paroid)}' AND estado='abierto' RETURNING duracion_min`);
+  await setSess('paro', 'idle', {});
+  if (r && r.length) await tg('sendMessage', { chat_id, text: `Paro de ${m} min registrado. Gracias por avisar 🙏` });
+  else await tg('sendMessage', { chat_id, text: 'Ese paro ya estaba cerrado.' });
+};
 // arranca paro/falt/cal sobre un tablero ya elegido
 const startFlowWithBoard = async (flujo, linea_id, lnombre) => {
   if (flujo === 'paro') {
@@ -402,6 +410,8 @@ else if (data === 'paro_start') action = 'paro_start';
 else if (data.startsWith('pcausa_')) action = 'paro_causa';
 else if (data.startsWith('ack_')) action = 'ack';
 else if (data.startsWith('pclose_')) action = 'pclose';
+else if (data.startsWith('pdurx_')) action = 'pdurx';
+else if (data.startsWith('pdur_')) action = 'pdur';
 else if (data === 'falt_start') action = 'falt_start';
 else if (data.startsWith('fack_')) action = 'fack';
 else if (data.startsWith('fdone_')) action = 'fdone';
@@ -508,15 +518,37 @@ if (action === 'ack') {
   await rmKb(chat_id, mid);
   const paroid = data.slice(4);
   const up = await pg(`UPDATE horacio.paros SET acuse_ts=now() WHERE id='${esc(paroid)}' AND acuse_ts IS NULL RETURNING reporto_chat_id`);
-  if (up && up.length) { const who = await pg(`SELECT nombre FROM horacio.personas WHERE chat_id=${chat_id} ORDER BY (rol<>'lider') DESC LIMIT 1`); const nombre = (who && who.length) ? who[0].nombre : 'El responsable'; await tg('sendMessage', { chat_id: up[0].reporto_chat_id, text: `${esc(nombre)} ya lo vio 👍 Va para allá.` }); }
+  if (up && up.length) {
+    const who = await pg(`SELECT nombre FROM horacio.personas WHERE chat_id=${chat_id} ORDER BY (rol<>'lider') DESC LIMIT 1`); const nombre = (who && who.length) ? who[0].nombre : 'El responsable';
+    await tg('sendMessage', { chat_id: up[0].reporto_chat_id, text: `${esc(nombre)} ya lo vio 👍 Va para allá.` });
+    // pedir la acción al dueño (queda en paros.accion y se avisa a la líder)
+    await setSess('paro', 'paro_accion', { paroid });
+    await tg('sendMessage', { chat_id, text: '¿Qué acción vas a tomar? Escríbela 🙏 — la inmediata y la correctiva/preventiva. (Queda registrada en el paro.)' });
+  }
   return [{ json: { action } }];
 }
 if (action === 'pclose') {
   await rmKb(chat_id, mid);
   const paroid = data.slice(7);
-  const r = await pg(`UPDATE horacio.paros SET ts_fin=now(), estado='cerrado', duracion_min=ROUND(EXTRACT(EPOCH FROM (now()-ts_inicio))/60.0)::numeric WHERE id='${esc(paroid)}' AND estado='abierto' RETURNING duracion_min`);
-  if (r && r.length) await tg('sendMessage', { chat_id, text: `Paro de ${r[0].duracion_min} min registrado. Gracias por avisar 🙏` });
-  else await tg('sendMessage', { chat_id, text: 'Ese paro ya estaba cerrado.' });
+  const chk = await pg(`SELECT estado, ROUND(EXTRACT(EPOCH FROM (now()-ts_inicio))/60.0)::int AS est FROM horacio.paros WHERE id='${esc(paroid)}'`);
+  if (!chk.length || chk[0].estado !== 'abierto') { await tg('sendMessage', { chat_id, text: 'Ese paro ya estaba cerrado.' }); return [{ json: { action: 'pclose-cerrado' } }]; }
+  await setSess('paro', 'paro_dur', { paroid });
+  const ms = [15, 30, 45, 60, 90, 120];
+  const rows = [ms.slice(0, 3).map((m) => ({ text: m + ' min', callback_data: `pdur_${paroid}_${m}` })), ms.slice(3).map((m) => ({ text: m + ' min', callback_data: `pdur_${paroid}_${m}` })), [{ text: 'Otro…', callback_data: `pdurx_${paroid}` }]];
+  await tg('sendMessage', { chat_id, text: `¿Cuántos minutos duró el paro realmente? (así no se infla el dato)`, reply_markup: { inline_keyboard: rows } });
+  return [{ json: { action } }];
+}
+if (action === 'pdur' || action === 'pdurx') {
+  await rmKb(chat_id, mid);
+  if (action === 'pdurx') {
+    const paroid = data.slice(6);
+    await setSess('paro', 'paro_dur', { paroid, otro: true });
+    await tg('sendMessage', { chat_id, text: 'Escríbeme cuántos minutos duró (solo el número).' });
+    return [{ json: { action } }];
+  }
+  const rest = data.slice(5), us = rest.lastIndexOf('_');
+  const paroid = rest.slice(0, us), min = parseInt(rest.slice(us + 1), 10);
+  await closeParo(paroid, min);
   return [{ json: { action } }];
 }
 
@@ -676,6 +708,21 @@ if (action === 'causa') {
 // ---- ENTRADA LIBRE (texto/foto) según sesión activa ----
 if (action === 'ignore' && msg && (text || photo)) {
   const s = await readSess();
+  if (s && s.step === 'paro_accion' && s.d.paroid) {
+    const acc = (text || '').trim();
+    if (!acc) { await tg('sendMessage', { chat_id, text: 'Escríbeme la acción que tomarás 🙏' }); return [{ json: { action: 'paro_accion_bad' } }]; }
+    const up = await pg(`UPDATE horacio.paros SET accion='${esc(acc.slice(0, 500))}' WHERE id='${esc(s.d.paroid)}' RETURNING reporto_chat_id`);
+    await setSess('paro', 'idle', {});
+    await tg('sendMessage', { chat_id, text: 'Anotada la acción 🙏 Gracias.' });
+    if (up && up.length && up[0].reporto_chat_id) await tg('sendMessage', { chat_id: up[0].reporto_chat_id, text: `Acción sobre el paro: ${acc.slice(0, 500)}` });
+    return [{ json: { action: 'paro_accion' } }];
+  }
+  if (s && s.step === 'paro_dur' && s.d.paroid) {
+    const n = parseInt(String(text || '').replace(/[^0-9]/g, ''), 10);
+    if (isNaN(n) || n < 1 || n > 1440) { await tg('sendMessage', { chat_id, text: 'Mándame cuántos minutos duró (solo el número, 1 a 1440) 🙏' }); return [{ json: { action: 'paro_dur_bad' } }]; }
+    await closeParo(s.d.paroid, n);
+    return [{ json: { action: 'paro_dur' } }];
+  }
   if (s && s.step === 'orden_ot') {
     const ot = (text || '').trim();
     if (!ot) { await tg('sendMessage', { chat_id, text: 'Escríbeme la OT (texto).' }); return [{ json: { action: 'orden_ot_bad' } }]; }
