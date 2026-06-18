@@ -212,27 +212,60 @@ if (b && b.admin) {
   }
 
   if (b.admin === 'resumen_dir') {
-    const recips = await pg("SELECT chat_id, nombre FROM horacio.personas WHERE rol IN ('direccion','resumen') AND chat_id IS NOT NULL AND activa");
+    // preview_chat: manda solo a ese chat (para revisar sin avisar a Dirección)
+    const recips = b.preview_chat
+      ? [{ chat_id: b.preview_chat, nombre: 'preview' }]
+      : await pg("SELECT chat_id, nombre FROM horacio.personas WHERE rol IN ('direccion','resumen') AND chat_id IS NOT NULL AND activa");
     if (!recips || !recips.length) return [{ json: { admin: 'resumen_dir', skip: 'sin destinatarios' } }];
+    const sem3 = (pct) => pct >= 95 ? '🟢' : (pct >= 80 ? '🟡' : '🔴');
     const tableros = await pg("SELECT id, nombre, grupo, unidad FROM horacio.lineas WHERE activa=true ORDER BY grupo, orden, codigo");
-    let blocks = [], curGrupo = null, shown = 0;
+    let shown = 0, reportando = 0, gSumP = 0, gSumCap = 0, revisar = [];
+    const groups = []; let cur = null;
     for (const L of tableros) {
-      const agg = await pg(`SELECT COALESCE(SUM(plan),0)::bigint AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::bigint AS real, COUNT(*) FILTER (WHERE NOT sin_dato)::int AS condato, COUNT(*) FILTER (WHERE sin_dato)::int AS sd FROM horacio.hora_por_hora WHERE linea_id='${L.id}' AND fecha='${fecha}'`);
+      if (!cur || cur.grupo !== L.grupo) { cur = { grupo: L.grupo, lines: [], P: 0, cap: 0, sinCap: 0 }; groups.push(cur); }
+      const agg = await pg(`SELECT COALESCE(SUM(plan) FILTER (WHERE NOT sin_dato),0)::bigint AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::bigint AS real, COUNT(*) FILTER (WHERE NOT sin_dato)::int AS condato, COUNT(*) FILTER (WHERE sin_dato)::int AS sd FROM horacio.hora_por_hora WHERE linea_id='${L.id}' AND fecha='${fecha}'`);
       const paros = await pg(`SELECT COUNT(*)::int AS n, COALESCE(SUM(duracion_min),0)::int AS min FROM horacio.paros WHERE linea_id='${L.id}' AND ts_inicio::date='${fecha}'`);
       const falt = await pg(`SELECT COUNT(*) FILTER (WHERE estado<>'cerrado')::int AS ab FROM horacio.faltantes WHERE linea_id='${L.id}' AND ts_reporte::date='${fecha}'`);
-      const P = agg[0].plan, R = agg[0].real, conDato = agg[0].condato, sd = agg[0].sd;
-      const hadProd = conDato > 0 || R > 0;
-      if (!hadProd && paros[0].n === 0 && falt[0].ab === 0 && sd === 0) continue; // sin nada hoy
+      const P = Number(agg[0].plan), R = Number(agg[0].real), conDato = agg[0].condato, sd = agg[0].sd;
+      const hadProd = conDato > 0 || R > 0, hasInc = paros[0].n > 0 || falt[0].ab > 0;
+      if (hadProd) reportando++;
+      if (!hadProd && !hasInc) { if (sd > 0) cur.sinCap++; continue; } // pingueado sin captura → roll-up
       let prod, sem;
-      if (P > 0) { const pct = Math.round(R / P * 100); sem = pct >= 95 ? '🟢' : (pct >= 80 ? '🟡' : '🔴'); prod = `${R}/${P} (${pct}%)`; }
-      else { sem = '⚪'; prod = `${R} ${L.unidad || 'pzs'}`; }
-      if (L.grupo !== curGrupo) { curGrupo = L.grupo; blocks.push(`\n— ${curGrupo} —`); }
-      blocks.push(`${sem} ${L.nombre}: ${prod} · paros ${paros[0].n} (${paros[0].min}m) · faltantes ${falt[0].ab}${sd ? ` · ${sd} sin dato` : ''}`);
+      if (P > 0) {
+        const pctRaw = Math.round(R / P * 100), pct = Math.min(pctRaw, 100), capR = Math.min(R, P), over = R > P * 1.05;
+        sem = sem3(pct); prod = `${R}/${P} (${pct}%${over ? ' ⚠️' : ''})`;
+        gSumP += P; gSumCap += capR; cur.P += P; cur.cap += capR;
+        if (over) revisar.push(`${L.nombre} ${pctRaw}%`);
+      } else { sem = '⚪'; prod = `${R} ${L.unidad || 'pzs'}`; }
+      cur.lines.push(`${sem} ${L.nombre}: ${prod}${paros[0].n ? ` · paros ${paros[0].n} (${paros[0].min}m)` : ''}${falt[0].ab ? ` · faltantes ${falt[0].ab}` : ''}${sd ? ` · ${sd} sin dato` : ''}`);
       shown++;
     }
-    const txt = `📊 Resumen del día — ${fecha}\n${blocks.join('\n') || '\n(sin actividad registrada)'}\n\n— Horacio`;
+    let blocks = [];
+    for (const g of groups) {
+      if (!g.lines.length && !g.sinCap) continue;
+      const gpct = g.P > 0 ? Math.min(100, Math.round(g.cap / g.P * 100)) : null;
+      blocks.push(`\n— ${g.grupo}${gpct == null ? '' : ' ' + sem3(gpct) + ' ' + gpct + '%'}${g.sinCap ? ` · ${g.sinCap} sin captura` : ''} —`);
+      g.lines.forEach((l) => blocks.push(l));
+    }
+    // ---- agregados ejecutivos del día ----
+    const cumpl = gSumP > 0 ? Math.min(100, Math.round(gSumCap / gSumP * 100)) : null;
+    const pd = (await pg(`SELECT COUNT(*)::int AS n, COALESCE(SUM(duracion_min),0)::bigint AS min, COUNT(*) FILTER (WHERE estado='abierto')::int AS ab FROM horacio.paros WHERE ts_inicio::date='${fecha}'`))[0];
+    const ab = (await pg(`SELECT (SELECT COUNT(*) FROM horacio.faltantes WHERE estado<>'cerrado')::int AS falt, (SELECT COUNT(*) FROM horacio.calidad WHERE estado<>'cerrado')::int AS cal`))[0];
+    const ac = (await pg(`SELECT ROUND(AVG(EXTRACT(EPOCH FROM (acuse_ts-ts_inicio))/60.0))::int AS m FROM horacio.paros WHERE acuse_ts IS NOT NULL AND ts_inicio::date >= '${fecha}'::date-6`))[0];
+    const og = (await pg(`SELECT COUNT(*) FILTER (WHERE NOT sin_dato AND origen='telegram_lider')::int AS puras, COUNT(*) FILTER (WHERE origen='panel_manual')::int AS manual, COUNT(*) FILTER (WHERE sin_dato)::int AS sind FROM horacio.hora_por_hora WHERE fecha='${fecha}'`))[0];
+    const em = (await pg(`SELECT COALESCE(SUM(d.cantidad),0)::bigint AS tot, COUNT(DISTINCT d.numero_parte)::int AS nps FROM horacio.hxh_tarjetas d JOIN horacio.hora_por_hora h ON h.id=d.hxh_id JOIN horacio.lineas l ON l.id=h.linea_id WHERE l.captura='tarjetas' AND h.fecha='${fecha}'`))[0];
+    const tc = await pg(`SELECT cp.boton_texto AS causa, COUNT(*)::int AS n FROM (SELECT causa_codigo FROM horacio.paros WHERE ts_inicio::date='${fecha}' AND causa_codigo IS NOT NULL UNION ALL SELECT causa_codigo FROM horacio.hora_por_hora WHERE fecha='${fecha}' AND causa_codigo IS NOT NULL) x JOIN horacio.causas_paro cp ON cp.codigo=x.causa_codigo WHERE cp.cuenta_como_paro GROUP BY cp.boton_texto ORDER BY n DESC LIMIT 1`);
+    let head = `📊 Resumen del día — ${fecha}`;
+    head += `\n\n🏭 Cumplimiento global: ${cumpl == null ? '—' : sem3(cumpl) + ' ' + cumpl + '%'}  (tableros con meta)`;
+    head += `\n🗒️ Captura: ${reportando}/${tableros.length} tableros · ${og.puras} de líder · ${og.manual} manual${og.sind ? ` · ${og.sind} sin dato` : ''}`;
+    head += `\n🛑 Paros: ${pd.n} (${pd.min} min)${pd.ab ? ` · ${pd.ab} abiertos` : ''} · 📦 Faltantes: ${ab.falt} · 🔎 Calidad: ${ab.cal}`;
+    if (ac.m != null) head += `\n⏱️ Reacción a paros: ${ac.m} min prom (7d)`;
+    if (Number(em.tot) > 0) head += `\n📦 Embarques: ${em.tot} tarjetas (${em.nps} NP)`;
+    if (revisar.length) head += `\n\n⚠️ Revisar meta/captura: ${revisar.join(' · ')}`;
+    let foot = tc.length ? `\n\n🔎 Causa #1 hoy: ${tc[0].causa} (${tc[0].n})` : '';
+    const txt = `${head}\n${blocks.join('\n') || '\n(sin actividad registrada)'}${foot}\n\n— Horacio`;
     for (const r of recips) { try { await tg('sendMessage', { chat_id: r.chat_id, text: txt }); } catch (e) {} }
-    return [{ json: { admin: 'resumen_dir', tableros: shown, recips: recips.length } }];
+    return [{ json: { admin: 'resumen_dir', tableros: shown, recips: recips.length, preview: !!b.preview_chat, text: b.preview_chat ? txt : undefined } }];
   }
   return [{ json: { ok: false, error: 'unknown admin' } }];
 }

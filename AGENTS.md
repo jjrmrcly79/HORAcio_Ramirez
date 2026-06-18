@@ -330,6 +330,24 @@ gatea todo.
   pestaña "Personas / PIN" → asigna PIN a cada quien y lo reparte. Los demás entran con
   nombre + su PIN.
 
+### ✅ Resumen de Dirección — nivel ejecutivo (2026-06-18)
+`resumen_dir` (17:00) dejó de ser solo lista por tablero. Ahora abre con un **encabezado
+ejecutivo** y aplica el **mismo tope 100%** que el dashboard (`Σ min(real,meta)/Σ meta`,
+nada se infla):
+- 🏭 **Cumplimiento global** (capado) · 🗒️ **Captura**: tableros que reportaron / total +
+  **dato puro vs manual** (de líder / panel / sin dato, vía `origen`) · 🛑 **Paros** (n + min
+  + abiertos) · 📦 Faltantes · 🔎 Calidad · ⏱️ **Reacción a paros** (acuse prom 7d) ·
+  📦 **Embarques** (tarjetas + NP del día).
+- ⚠️ **Revisar meta/captura:** lista los tableros >105% con su % real.
+- Detalle **por área con semáforo** (🟢/🟡/🔴 del % capado del grupo); los tableros
+  pingueados sin captura se **agrupan** ("· N sin captura") en vez de una línea vacía
+  cada uno; las incidencias (paros/faltantes) solo aparecen si las hubo.
+- 🔎 **Causa #1 del día** = la causa real más frecuente (**excluye** pausas programadas
+  `cuenta_como_paro=false`) — accionable.
+- **`preview_chat`** en el admin: `{admin:'resumen_dir',secret,preview_chat:<id>}` manda
+  el resumen solo a ese chat y **devuelve el texto** en la respuesta (probar sin avisar a
+  Dirección). Fuente: `n8n/horacio-bot.code.js` (admin `resumen_dir`).
+
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
 auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**
