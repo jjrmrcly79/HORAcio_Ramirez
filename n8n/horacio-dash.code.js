@@ -161,8 +161,9 @@ const kp = await pg(`SELECT (SELECT COUNT(*) FROM horacio.paros WHERE estado='ab
 const K = kp[0] || {};
 
 const hb = await pg(`SELECT p.nombre, COUNT(DISTINCT l.id)::int AS nboards, COUNT(h.*) FILTER (WHERE NOT h.sin_dato)::int AS reportes, MAX(h.ts) FILTER (WHERE NOT h.sin_dato) AS ultima FROM horacio.personas p JOIN horacio.lineas l ON l.lider_persona_id=p.id AND l.activa LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE p.chat_id IS NOT NULL GROUP BY p.id, p.nombre ORDER BY p.nombre`);
+const DIA_VENTANAS = 9; // turno 6:30→15:30 = 9 ventanas HxH
 const lideres = hb.map((r) => {
-  const esp = (Number(r.nboards) || 0) * expectedSlots, rep = Number(r.reportes) || 0;
+  const esp = (Number(r.nboards) || 0) * DIA_VENTANAS, rep = Number(r.reportes) || 0; // denominador FIJO del día (nº tableros × 9)
   const ult = r.ultima ? DateTime.fromSQL(r.ultima).setZone('America/Mexico_City').toFormat('HH:mm') : null; // hora MX de captura
   return { nombre: r.nombre, reportados: rep, esperados: esp, pct: esp > 0 ? Math.round(rep / esp * 100) : null, ultima: ult };
 });
