@@ -18,13 +18,16 @@ Fuente de verdad operativa (lo que n8n lee): tablas `horacio.*` en Supabase.
 ## Estado actual (snapshot · 2026-06-16)
 **Piloto EN VIVO** — `Horacio - Scheduler` ACTIVO, produciendo datos reales.
 
-**Tableros y líderes (9 tableros, modelo "1 líder = varios tableros"):**
+**Tableros y líderes (15 tableros activos, modelo "1 líder = varios tableros"):**
 | Grupo | Tableros | Líder | Alta |
 |---|---|---|---|
 | SMT | SMT 411&481 · SMT 520 (102/hr ofic.) | Viridiana Escalona | ✅ |
 | PTH | PTH · Ola · Soldeo · ICT/FCT · Conformal (Yadira) | Yadira Magdariaga | ✅ ⚠️ *de vacaciones; la cubre Gabriela (ver Relevos)* |
-| CONFORMAL | Conformal (Rocío) | Rocío (Chío) | ✅ |
+| CONFORMAL | Grabación · Limpieza · FCT · Pasta/Silicon/Resina · Ensambles · Prueba (FCT) · Empaque | Rocío (Chío) | ✅ |
 | EMBARQUES | Embarques (tarjetas retiradas) | Brenda Medina | ✅ |
+
+> *Conformal (Rocío)* (`CONFORMAL_R`) quedó **inactivo** (sql/012): Rocío pasó de 1
+> tablero a sus 7 sub-procesos. El historial de Conformal se conserva.
 
 **Dueños de escalamiento:** Daniel Nava (paros/Producción) · Nayeli Hernández
 (faltantes; **jefa de Embarques**) · Marco Sotelo (calidad; **+ recibe resumen**) ·
@@ -198,7 +201,17 @@ tap caía a la ruta numérica (`action=hxh_board`, no `hxh_board_tj`). Ahora `hx
 **re-consulta `lineas.captura` desde BD** si falta en el snapshot → robusto ante
 sesiones abiertas durante un deploy. Probado con sesión "vieja" simulada → abre la lista.
 Pendiente UX: Brenda intentó teclear toda la lista en un mensaje ("NP cantidad" ×4);
-valorar parseo de texto libre además de los botones.
+valorar parseo de texto libre además de los botones. **Decisión:** queda **solo botones**.
+
+### ✅ Tableros de Rocío (Chío): sus 7 sub-procesos (2026-06-18, sql/012)
+Rocío pasó de 1 tablero ('Conformal (Rocío)') a **7 pizarrones HxH** propios:
+**Grabación · Limpieza · FCT · Pasta/Silicon/Resina · Ensambles · Prueba (FCT) ·
+Empaque** (grupo `CONFORMAL`, `no_estandar`, unidad piezas, captura conteo,
+supervisor `paros`→Daniel). 'Conformal (Rocío)' (`CONFORMAL_R`) se **desactivó**
+(`activa=false`) conservando su historial. Sin cambio de bot (los tableros se leen
+en runtime); se limpió la sesión de Rocío para no dejar referencia al tablero viejo.
+El ping multi-tablero le llega con los 7 (un botón por sub-proceso). Daniel les fija
+meta con `/orden` cuando quiera que entren al % de cumplimiento.
 
 ### ✅ Dashboard Mapartel — Horacio (2026-06-15)
 Workflow **`Horacio - Dashboard`** (`ng4loQv932n2AIRC`, ACTIVO). Webhook GET
