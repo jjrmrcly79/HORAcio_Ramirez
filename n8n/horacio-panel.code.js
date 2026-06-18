@@ -176,7 +176,9 @@ const PAGE = [
 '<div id="gate"><div class="box"><h3>¿Quién eres?</h3><div class="muted">Tus registros manuales quedarán firmados con tu nombre.</div><div class="glist" id="glist"></div></div></div>',
 '<script>',
 'var TK=new URLSearchParams(location.search).get("token")||"";',
-'var BY=localStorage.getItem("panel_by")||"";',
+'function lsGet(k){try{return localStorage.getItem(k)||"";}catch(e){return "";}}',
+'function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}',
+'var BY=lsGet("panel_by");',
 'var ST=null, TAB="captura", PRE=null;',
 'function tj(s){var t=document.getElementById("toast");t.textContent=s;t.className="show";setTimeout(function(){t.className="";},2600);}',
 'function h(s){return String(s==null?"":s).replace(/[&<>\\"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c];});}',
@@ -184,7 +186,7 @@ const PAGE = [
 'function openGate(){var g=document.getElementById("gate");var L=document.getElementById("glist");if(!ST){g.style.display="flex";L.innerHTML="<div class=\\"muted\\">cargando…</div>";return;}',
 '  L.innerHTML=ST.personas.map(function(p){return "<div class=\\"gitem\\" onclick=\\"pickBy(\\x27"+h(p.nombre).replace(/\\x27/g,"")+"\\x27)\\">"+h(p.nombre)+"<span>"+h(p.rol)+"</span></div>";}).join("");',
 '  g.style.display="flex";}',
-'function pickBy(n){BY=n;localStorage.setItem("panel_by",n);document.getElementById("gate").style.display="none";setWho();}',
+'function pickBy(n){BY=n;lsSet("panel_by",n);document.getElementById("gate").style.display="none";setWho();}',
 'async function load(){',
 '  try{var r=await fetch(location.pathname+"?token="+encodeURIComponent(TK)+"&data=1",{cache:"no-store"});var txt=await r.text();',
 '   if(!r.ok){document.getElementById("sub").textContent="error HTTP "+r.status;return;}',
@@ -260,8 +262,7 @@ const PAGE = [
 'function renderAsignar(v){var rows=ST.tableros.map(function(t){return "<div class=\\"tline\\"><div><b>"+h(t.nombre)+"</b> <span class=\\"muted\\">"+h(t.grupo)+"</span></div><div>"+personaSel("a_"+t.id,t.lider_persona_id||"")+" <button class=\\"btn sm\\" onclick=\\"doAssign(\\x27"+t.id+"\\x27)\\">asignar</button></div></div>";}).join("");',
 '  v.innerHTML="<div class=\\"card\\"><h2>Asignar / reasignar líder por tablero</h2>"+rows+"</div>";}',
 'async function doAssign(id){var pid=document.getElementById("a_"+id).value;var d=await post({action:"assign_board",linea_id:id,lider_persona_id:pid});if(d.ok){tj("Líder asignado ✓");await load();render();}else tj(d.error||"no se pudo");}',
-'setWho();load();setInterval(load,30000);',
-'if(!BY)setTimeout(openGate,400);',
+'try{setWho();load();setInterval(load,30000);if(!BY)setTimeout(openGate,400);}catch(e){var sb=document.getElementById("sub");if(sb)sb.textContent="error al iniciar: "+e.message;}',
 '</script></body></html>'
 ].join('');
 return [{ json: { body: PAGE, contentType: 'text/html; charset=utf-8' } }];

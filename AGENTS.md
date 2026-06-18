@@ -277,6 +277,12 @@ panel **operativo** para líder de área/supervisión. Workflow **`Horacio - Pan
 - Probado e2e: lecturas (15 tableros, 9 ventanas), backfill firmado, rechazo de duplicado,
   crear/editar/asignar, token malo rechazado, JS del navegador `node --check` OK; datos
   de prueba limpiados. Fuente: `n8n/horacio-panel.code.js` · `sql/013_trazabilidad.sql`.
+- **Fix (2026-06-18) "se queda cargando":** el panel usa `localStorage` (identidad) al
+  inicio; en navegadores restringidos (**webview interno de Telegram**, modo privado) eso
+  **lanza excepción y mataba todo el script** → la página quedaba en "cargando…". El
+  dashboard no usa localStorage, por eso ese sí carga. Fix: `lsGet/lsSet` con try/catch +
+  arranque envuelto en try (errores ahora visibles en `#sub`). Recomendado abrir el panel
+  en navegador real (Chrome/Safari), no en el navegador interno de Telegram.
 - **URL:** `https://n8n.nexiasoluciones.com.mx/webhook/horacio-panel?token=<PANEL_TOKEN>`
   (compartir SOLO con supervisión — tiene escritura). Refrescar code:
   `python3 scripts/push_code.py n8n/horacio-panel.code.js 4sJAO9urzrgQowJB "Horacio Panel"`.
