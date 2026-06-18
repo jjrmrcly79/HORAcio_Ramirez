@@ -312,7 +312,27 @@ const askArea = async () => {
   await tg('sendMessage', { chat_id, text: '¿Qué área cubres? (recibirás los avisos de esa área)', reply_markup: { inline_keyboard: rows } });
 };
 // menú HxH: un botón por tablero pendiente; cierra cuando completa todos
+// Motivación por hitos del día: inicio / mitad (50%) / completo (100%). 1 vez/día por líder.
+const motivar = async (cid) => {
+  try {
+    const p = await pg(`SELECT id, nombre FROM horacio.personas WHERE chat_id=${cid} AND activa LIMIT 1`);
+    if (!p.length) return;
+    const pid = p[0].id, nombre = p[0].nombre;
+    const r = await pg(`SELECT (SELECT COUNT(DISTINCT l.id) FROM horacio.lineas l WHERE l.lider_persona_id='${pid}' AND l.activa)::int AS nb, (SELECT COUNT(*) FROM horacio.hora_por_hora h JOIN horacio.lineas l ON l.id=h.linea_id WHERE l.lider_persona_id='${pid}' AND h.fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND NOT h.sin_dato)::int AS rep`);
+    const nb = Number(r[0].nb) || 0, rep = Number(r[0].rep) || 0;
+    if (!nb) return;
+    const pct = Math.round(rep / (nb * 9) * 100);
+    let hito = null, msg = null;
+    if (pct >= 100) { hito = 'completo'; msg = `¡Completaste tu hora por hora del día, ${esc(nombre)}! 🎉 Gracias por tu constancia 🙌`; }
+    else if (pct >= 50) { hito = 'mitad'; msg = `¡Vas a la mitad, ${esc(nombre)}! 🙌 Buen ritmo, sigue así 💪`; }
+    else if (rep === 1) { hito = 'inicio'; msg = `¡Arrancaste, ${esc(nombre)}! 💪 Vamos hora por hora, aquí te acompaño.`; }
+    if (!hito) return;
+    const ins = await pg(`INSERT INTO horacio.motivacion(chat_id,fecha,hito) VALUES(${cid},(now() AT TIME ZONE 'America/Mexico_City')::date,'${hito}') ON CONFLICT DO NOTHING RETURNING hito`);
+    if (ins && ins.length) await tg('sendMessage', { chat_id: cid, text: msg });
+  } catch (e) {}
+};
 const hxhBoardMenu = async (d) => {
+  await motivar(chat_id);
   const pend = d.boards.filter((x) => !d.done.includes(x.linea_id));
   if (!pend.length) {
     if (Array.isArray(d.queue) && d.queue.length) { // catch-up: pasa a la siguiente hora

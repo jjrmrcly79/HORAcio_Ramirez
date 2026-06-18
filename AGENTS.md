@@ -367,6 +367,14 @@ por cierre tardío); ahora **pregunta la duración real** con botones (15/30/45/
 callbacks `pdur_<id>_<min>`/`pdurx_<id>`; helper `closeParo`. Probado e2e (paro de 113 min →
 acción guardada + cerrado con 30 min confirmados). Fuente: `n8n/horacio-bot.code.js`.
 
+### ✅ Motivación por hitos del día (2026-06-18, sql/017)
+Horacio "da antes de pedir": con el avance del día (capturas / (nº tableros × 9))
+manda un mensaje cálido al cruzar **inicio** (1ª captura), **mitad** (≥50%) y
+**completo** (100%) — 1 vez/día por líder (tabla `horacio.motivacion`, PK chat+fecha+hito,
+`ON CONFLICT DO NOTHING`). Helper `motivar(chat_id)` llamado al inicio de `hxhBoardMenu`
+(idempotente). Probado e2e (inicio→mitad→completo). Relacionado: dashboard heartbeat ahora
+con denominador fijo del día (nº tableros × 9). Fuente: `n8n/horacio-bot.code.js`.
+
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
 auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**
