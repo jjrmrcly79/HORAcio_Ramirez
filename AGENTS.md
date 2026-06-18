@@ -399,6 +399,21 @@ botones 😀 bien / 😐 normal / 😟 pesado.
 > escalaciones de feedback lleguen (hoy aún nadie con rol `rh` + chat).
 > Workflow scheduler ahora con **7 crons** (se sumó Cron Encuesta 18:00).
 
+### ✅ Corrección de horas con auditoría (2026-06-18, sql/019)
+(R3-HDB-15) El **admin** puede corregir una hora ya capturada **sin borrar** (anti-falseo):
+una corrección es un **evento nuevo con `corrige_id`** que apunta a la fila sustituida; la
+original se **conserva** (valor viejo, quién, cuándo). Los agregados leen de la **vista
+`horacio.hxh_vigente`** (= filas no sustituidas), así cuentan solo la corregida.
+- **Vista (sql/019):** `hxh_vigente` = `hora_por_hora` sin las filas que tienen un
+  `corrige_id` apuntándolas. Se cambió `hora_por_hora`→`hxh_vigente` en **todas las queries
+  de agregación**: dashboard (tab, hb, porHora, semana, pareto), panel (matriz + chequeo de
+  duplicado), bot (resumen_dir, resumen_lider, motivar). Las de INSERT/tarjetas quedan en la tabla real.
+- **Panel:** un admin toca una celda **ya capturada** → "✏️ Corregir" (muestra valor actual)
+  → nuevo valor + motivo → `action=correct` (solo `es_admin`): inserta corrección con
+  `corrige_id`=fila vigente, `origen='panel_manual'`, `capturado_por`=sesión. No-admin: bloqueado.
+- Probado e2e: 50 (líder) → 80 (corrección); original conservado y marcado sustituido;
+  vigente=80; no-admin rechazado. Fuente: `sql/019` · dash/panel/bot.
+
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
 auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**

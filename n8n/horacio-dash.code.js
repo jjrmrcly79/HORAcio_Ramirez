@@ -144,7 +144,7 @@ const horaNum = Number(now.toFormat('HH'));
 const minNum = Number(now.toFormat('mm'));
 const expectedSlots = Math.max(0, Math.min(9, (horaNum - 7) + (minNum >= 30 ? 1 : 0))); // ventanas de :30 ya cerradas (6:30→7:30 …)
 
-const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, l.unidad, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::bigint AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::bigint AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta FROM horacio.lineas l LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa AND l.captura<>'tarjetas' GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
+const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, l.unidad, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::bigint AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::bigint AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta FROM horacio.lineas l LEFT JOIN horacio.hxh_vigente h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa AND l.captura<>'tarjetas' GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
 const tableros = tab.map((t) => {
   const plan = Number(t.plan) || 0, real = Number(t.real) || 0;
   const pctRaw = plan > 0 ? Math.round(real / plan * 100) : null;     // % real sin topar (puede pasar de 100)
@@ -160,7 +160,7 @@ const sumPlan = conMeta.reduce((a, t) => a + t.plan, 0), sumReal = conMeta.reduc
 const kp = await pg(`SELECT (SELECT COUNT(*) FROM horacio.paros WHERE estado='abierto')::int AS paros_ab, (SELECT COALESCE(SUM(duracion_min),0) FROM horacio.paros WHERE ts_inicio::date='${fecha}')::int AS min_paro, (SELECT COUNT(*) FROM horacio.faltantes WHERE estado<>'cerrado')::int AS falt_ab, (SELECT COUNT(*) FROM horacio.calidad WHERE estado<>'cerrado')::int AS cal_ab, (SELECT ROUND(AVG(duracion_min))::int FROM horacio.paros WHERE estado='cerrado' AND duracion_min IS NOT NULL AND ts_inicio::date >= '${fecha}'::date-6) AS reaccion_min`);
 const K = kp[0] || {};
 
-const hb = await pg(`SELECT p.nombre, COUNT(DISTINCT l.id)::int AS nboards, COUNT(h.*) FILTER (WHERE NOT h.sin_dato)::int AS reportes, MAX(h.ts) FILTER (WHERE NOT h.sin_dato) AS ultima FROM horacio.personas p JOIN horacio.lineas l ON l.lider_persona_id=p.id AND l.activa LEFT JOIN horacio.hora_por_hora h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE p.chat_id IS NOT NULL GROUP BY p.id, p.nombre ORDER BY p.nombre`);
+const hb = await pg(`SELECT p.nombre, COUNT(DISTINCT l.id)::int AS nboards, COUNT(h.*) FILTER (WHERE NOT h.sin_dato)::int AS reportes, MAX(h.ts) FILTER (WHERE NOT h.sin_dato) AS ultima FROM horacio.personas p JOIN horacio.lineas l ON l.lider_persona_id=p.id AND l.activa LEFT JOIN horacio.hxh_vigente h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE p.chat_id IS NOT NULL GROUP BY p.id, p.nombre ORDER BY p.nombre`);
 const DIA_VENTANAS = 9; // turno 6:30→15:30 = 9 ventanas HxH
 const lideres = hb.map((r) => {
   const esp = (Number(r.nboards) || 0) * DIA_VENTANAS, rep = Number(r.reportes) || 0; // denominador FIJO del día (nº tableros × 9)
@@ -178,11 +178,11 @@ const esc = await pg(`SELECT tipo, tablero, detalle, quien, ts, acuse_ts FROM (
 const nowMs = now.toMillis();
 const escal = esc.map((e) => ({ tipo: e.tipo, tablero: e.tablero, detalle: e.detalle, quien: e.quien, haceMin: Math.max(0, Math.round((nowMs - DateTime.fromISO(e.ts).toMillis()) / 60000)), acuse: !!e.acuse_ts }));
 
-const ph = await pg(`SELECT hora_slot, COALESCE(SUM(plan) FILTER (WHERE NOT sin_dato),0)::bigint AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::bigint AS real FROM horacio.hora_por_hora WHERE fecha='${fecha}' AND linea_id IN (SELECT id FROM horacio.lineas WHERE captura<>'tarjetas') GROUP BY hora_slot ORDER BY hora_slot`);
+const ph = await pg(`SELECT hora_slot, COALESCE(SUM(plan) FILTER (WHERE NOT sin_dato),0)::bigint AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::bigint AS real FROM horacio.hxh_vigente WHERE fecha='${fecha}' AND linea_id IN (SELECT id FROM horacio.lineas WHERE captura<>'tarjetas') GROUP BY hora_slot ORDER BY hora_slot`);
 const porHora = ph.map((r) => ({ slot: r.hora_slot, plan: Number(r.plan) || 0, real: Number(r.real) || 0 }));
 
 // semanal: cumplimiento por día (7d), capado por proceso (LEAST(real,meta) por línea-día)
-const sm = await pg(`WITH t AS (SELECT fecha, linea_id, SUM(plan) FILTER (WHERE NOT sin_dato) AS p, SUM(real) FILTER (WHERE NOT sin_dato) AS r FROM horacio.hora_por_hora WHERE fecha >= '${fecha}'::date-6 GROUP BY fecha, linea_id) SELECT fecha::text AS fecha, COALESCE(SUM(LEAST(r,p)),0)::bigint AS capreal, COALESCE(SUM(p),0)::bigint AS plan FROM t WHERE p>0 GROUP BY fecha ORDER BY fecha`);
+const sm = await pg(`WITH t AS (SELECT fecha, linea_id, SUM(plan) FILTER (WHERE NOT sin_dato) AS p, SUM(real) FILTER (WHERE NOT sin_dato) AS r FROM horacio.hxh_vigente WHERE fecha >= '${fecha}'::date-6 GROUP BY fecha, linea_id) SELECT fecha::text AS fecha, COALESCE(SUM(LEAST(r,p)),0)::bigint AS capreal, COALESCE(SUM(p),0)::bigint AS plan FROM t WHERE p>0 GROUP BY fecha ORDER BY fecha`);
 const semana = sm.map((r) => ({ fecha: r.fecha, pct: Number(r.plan) > 0 ? Math.min(100, Math.round(Number(r.capreal) / Number(r.plan) * 100)) : null }));
 
 // líder por área (grupo) para la leyenda
@@ -191,7 +191,7 @@ const areaLeader = {}; lead.forEach((r) => { areaLeader[r.grupo] = r.nombre; });
 const friendly = (n) => { const m = n && n.match(/\(([^)]+)\)/); return m ? m[1] : (n ? n.split(' ')[0] : '?'); };
 const grpName = (g) => (g === 'CONFORMAL' ? 'Conformal' : g);
 // causas (paros + merma HxH) desglosadas por área
-const par = await pg(`SELECT cp.boton_texto AS causa, l.grupo AS grupo, COUNT(*)::int AS n FROM (SELECT causa_codigo, linea_id FROM horacio.paros WHERE ts_inicio::date >= '${fecha}'::date-6 AND causa_codigo IS NOT NULL UNION ALL SELECT causa_codigo, linea_id FROM horacio.hora_por_hora WHERE fecha >= '${fecha}'::date-6 AND causa_codigo IS NOT NULL) x JOIN horacio.causas_paro cp ON cp.codigo=x.causa_codigo JOIN horacio.lineas l ON l.id=x.linea_id GROUP BY cp.boton_texto, l.grupo`);
+const par = await pg(`SELECT cp.boton_texto AS causa, l.grupo AS grupo, COUNT(*)::int AS n FROM (SELECT causa_codigo, linea_id FROM horacio.paros WHERE ts_inicio::date >= '${fecha}'::date-6 AND causa_codigo IS NOT NULL UNION ALL SELECT causa_codigo, linea_id FROM horacio.hxh_vigente WHERE fecha >= '${fecha}'::date-6 AND causa_codigo IS NOT NULL) x JOIN horacio.causas_paro cp ON cp.codigo=x.causa_codigo JOIN horacio.lineas l ON l.id=x.linea_id GROUP BY cp.boton_texto, l.grupo`);
 const totals = {}, byCA = {};
 par.forEach((r) => { const n = Number(r.n) || 0; totals[r.causa] = (totals[r.causa] || 0) + n; (byCA[r.causa] = byCA[r.causa] || {})[r.grupo] = n; });
 const AREAS = ['SMT', 'PTH', 'CONFORMAL'];

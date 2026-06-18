@@ -194,7 +194,7 @@ if (b && b.admin) {
       const boards = await pg(`SELECT id, nombre, unidad FROM horacio.lineas WHERE lider_persona_id='${P.pid}' AND activa ORDER BY orden, codigo`);
       let lines = [], gtp = 0, gtr = 0;
       for (const bd of boards) {
-        const hxh = await pg(`SELECT plan, real, sin_dato FROM horacio.hora_por_hora WHERE linea_id='${bd.id}' AND fecha='${fecha}'`);
+        const hxh = await pg(`SELECT plan, real, sin_dato FROM horacio.hxh_vigente WHERE linea_id='${bd.id}' AND fecha='${fecha}'`);
         let tp = 0, tr = 0, has = false, sd = 0;
         for (const h of hxh) { has = true; if (h.sin_dato) { sd++; continue; } tp += Number(h.plan || 0); tr += Number(h.real || 0); }
         const paros = await pg(`SELECT COUNT(*)::int AS n, COALESCE(SUM(duracion_min),0)::int AS min FROM horacio.paros WHERE linea_id='${bd.id}' AND ts_inicio::date='${fecha}'`);
@@ -224,7 +224,7 @@ if (b && b.admin) {
     const groups = []; let cur = null;
     for (const L of tableros) {
       if (!cur || cur.grupo !== L.grupo) { cur = { grupo: L.grupo, lines: [], P: 0, cap: 0, sinCap: 0 }; groups.push(cur); }
-      const agg = await pg(`SELECT COALESCE(SUM(plan) FILTER (WHERE NOT sin_dato),0)::bigint AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::bigint AS real, COUNT(*) FILTER (WHERE NOT sin_dato)::int AS condato, COUNT(*) FILTER (WHERE sin_dato)::int AS sd FROM horacio.hora_por_hora WHERE linea_id='${L.id}' AND fecha='${fecha}'`);
+      const agg = await pg(`SELECT COALESCE(SUM(plan) FILTER (WHERE NOT sin_dato),0)::bigint AS plan, COALESCE(SUM(real) FILTER (WHERE NOT sin_dato),0)::bigint AS real, COUNT(*) FILTER (WHERE NOT sin_dato)::int AS condato, COUNT(*) FILTER (WHERE sin_dato)::int AS sd FROM horacio.hxh_vigente WHERE linea_id='${L.id}' AND fecha='${fecha}'`);
       const paros = await pg(`SELECT COUNT(*)::int AS n, COALESCE(SUM(duracion_min),0)::int AS min FROM horacio.paros WHERE linea_id='${L.id}' AND ts_inicio::date='${fecha}'`);
       const falt = await pg(`SELECT COUNT(*) FILTER (WHERE estado<>'cerrado')::int AS ab FROM horacio.faltantes WHERE linea_id='${L.id}' AND ts_reporte::date='${fecha}'`);
       const P = Number(agg[0].plan), R = Number(agg[0].real), conDato = agg[0].condato, sd = agg[0].sd;
@@ -253,9 +253,9 @@ if (b && b.admin) {
     const pd = (await pg(`SELECT COUNT(*)::int AS n, COALESCE(SUM(duracion_min),0)::bigint AS min, COUNT(*) FILTER (WHERE estado='abierto')::int AS ab FROM horacio.paros WHERE ts_inicio::date='${fecha}'`))[0];
     const ab = (await pg(`SELECT (SELECT COUNT(*) FROM horacio.faltantes WHERE estado<>'cerrado')::int AS falt, (SELECT COUNT(*) FROM horacio.calidad WHERE estado<>'cerrado')::int AS cal`))[0];
     const ac = (await pg(`SELECT ROUND(AVG(EXTRACT(EPOCH FROM (acuse_ts-ts_inicio))/60.0))::int AS m FROM horacio.paros WHERE acuse_ts IS NOT NULL AND ts_inicio::date >= '${fecha}'::date-6`))[0];
-    const og = (await pg(`SELECT COUNT(*) FILTER (WHERE NOT sin_dato AND origen='telegram_lider')::int AS puras, COUNT(*) FILTER (WHERE origen='panel_manual')::int AS manual, COUNT(*) FILTER (WHERE sin_dato)::int AS sind FROM horacio.hora_por_hora WHERE fecha='${fecha}'`))[0];
+    const og = (await pg(`SELECT COUNT(*) FILTER (WHERE NOT sin_dato AND origen='telegram_lider')::int AS puras, COUNT(*) FILTER (WHERE origen='panel_manual')::int AS manual, COUNT(*) FILTER (WHERE sin_dato)::int AS sind FROM horacio.hxh_vigente WHERE fecha='${fecha}'`))[0];
     const em = (await pg(`SELECT COALESCE(SUM(d.cantidad),0)::bigint AS tot, COUNT(DISTINCT d.numero_parte)::int AS nps FROM horacio.hxh_tarjetas d JOIN horacio.hora_por_hora h ON h.id=d.hxh_id JOIN horacio.lineas l ON l.id=h.linea_id WHERE l.captura='tarjetas' AND h.fecha='${fecha}'`))[0];
-    const tc = await pg(`SELECT cp.boton_texto AS causa, COUNT(*)::int AS n FROM (SELECT causa_codigo FROM horacio.paros WHERE ts_inicio::date='${fecha}' AND causa_codigo IS NOT NULL UNION ALL SELECT causa_codigo FROM horacio.hora_por_hora WHERE fecha='${fecha}' AND causa_codigo IS NOT NULL) x JOIN horacio.causas_paro cp ON cp.codigo=x.causa_codigo WHERE cp.cuenta_como_paro GROUP BY cp.boton_texto ORDER BY n DESC LIMIT 1`);
+    const tc = await pg(`SELECT cp.boton_texto AS causa, COUNT(*)::int AS n FROM (SELECT causa_codigo FROM horacio.paros WHERE ts_inicio::date='${fecha}' AND causa_codigo IS NOT NULL UNION ALL SELECT causa_codigo FROM horacio.hxh_vigente WHERE fecha='${fecha}' AND causa_codigo IS NOT NULL) x JOIN horacio.causas_paro cp ON cp.codigo=x.causa_codigo WHERE cp.cuenta_como_paro GROUP BY cp.boton_texto ORDER BY n DESC LIMIT 1`);
     let head = `📊 Resumen del día — ${fecha}`;
     head += `\n\n🏭 Cumplimiento global: ${cumpl == null ? '—' : sem3(cumpl) + ' ' + cumpl + '%'}  (tableros con meta)`;
     head += `\n🗒️ Captura: ${reportando}/${tableros.length} tableros · ${og.puras} de líder · ${og.manual} manual${og.sind ? ` · ${og.sind} sin dato` : ''}`;
@@ -351,7 +351,7 @@ const motivar = async (cid) => {
     const p = await pg(`SELECT id, nombre FROM horacio.personas WHERE chat_id=${cid} AND activa LIMIT 1`);
     if (!p.length) return;
     const pid = p[0].id, nombre = p[0].nombre;
-    const r = await pg(`SELECT (SELECT COUNT(DISTINCT l.id) FROM horacio.lineas l WHERE l.lider_persona_id='${pid}' AND l.activa)::int AS nb, (SELECT COUNT(*) FROM horacio.hora_por_hora h JOIN horacio.lineas l ON l.id=h.linea_id WHERE l.lider_persona_id='${pid}' AND h.fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND NOT h.sin_dato)::int AS rep`);
+    const r = await pg(`SELECT (SELECT COUNT(DISTINCT l.id) FROM horacio.lineas l WHERE l.lider_persona_id='${pid}' AND l.activa)::int AS nb, (SELECT COUNT(*) FROM horacio.hxh_vigente h JOIN horacio.lineas l ON l.id=h.linea_id WHERE l.lider_persona_id='${pid}' AND h.fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND NOT h.sin_dato)::int AS rep`);
     const nb = Number(r[0].nb) || 0, rep = Number(r[0].rep) || 0;
     if (!nb) return;
     const pct = Math.round(rep / (nb * 9) * 100);

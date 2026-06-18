@@ -110,13 +110,26 @@ if (isPost) {
       if (isNaN(real) || real < 0 || real > 100000) return J({ ok: false, error: 'Piezas inválidas (0–100000).' });
       const ln = await pg(`SELECT id FROM horacio.lineas WHERE id='${esc(lid)}' AND activa`);
       if (!ln.length) return J({ ok: false, error: 'Tablero no existe.' });
-      const ya = await pg(`SELECT 1 FROM horacio.hora_por_hora WHERE linea_id='${esc(lid)}' AND fecha='${fecha}' AND hora_slot='${esc(slot)}' AND NOT sin_dato LIMIT 1`);
+      const ya = await pg(`SELECT 1 FROM horacio.hxh_vigente WHERE linea_id='${esc(lid)}' AND fecha='${fecha}' AND hora_slot='${esc(slot)}' AND NOT sin_dato LIMIT 1`);
       if (ya.length) return J({ ok: false, error: 'Esa hora ya está capturada.' });
       const causa = body.causa ? `'${esc(String(body.causa))}'` : 'NULL';
       const meta = await pg(`SELECT meta_hr FROM horacio.ordenes_tablero WHERE linea_id='${esc(lid)}' AND fecha='${fecha}' AND vigente ORDER BY ts DESC LIMIT 1`);
       const plan = (meta.length && meta[0].meta_hr != null) ? Number(meta[0].meta_hr) : null;
       const nota = body.nota ? `'${esc(String(body.nota).slice(0, 300))}'` : 'NULL';
       await pg(`INSERT INTO horacio.hora_por_hora(linea_id,fecha,hora_slot,plan,real,t_productivo_min,causa_codigo,origen,capturado_por,nota) VALUES('${esc(lid)}','${fecha}','${esc(slot)}',${plan == null ? 'NULL' : plan},${real},60,${causa},'panel_manual','${esc(by)}',${nota})`);
+      return J({ ok: true });
+    }
+    if (act === 'correct') {
+      if (!S.es_admin) return J({ ok: false, error: 'Solo un admin puede corregir una hora.' });
+      const lid = String(body.linea_id || ''), slot = String(body.slot || '');
+      const real = parseInt(String(body.real == null ? '' : body.real).replace(/[^0-9]/g, ''), 10);
+      if (!lid || SLOTS.indexOf(slot) < 0) return J({ ok: false, error: 'Tablero u hora inválidos.' });
+      if (isNaN(real) || real < 0 || real > 100000) return J({ ok: false, error: 'Piezas inválidas (0–100000).' });
+      const cur = await pg(`SELECT id, plan FROM horacio.hxh_vigente WHERE linea_id='${esc(lid)}' AND fecha='${fecha}' AND hora_slot='${esc(slot)}' AND NOT sin_dato ORDER BY ts DESC LIMIT 1`);
+      if (!cur.length) return J({ ok: false, error: 'No hay captura en esa hora para corregir (usa Registrar).' });
+      const plan = (cur[0].plan != null) ? Number(cur[0].plan) : null;
+      const nota = body.nota ? `'${esc(String(body.nota).slice(0, 300))}'` : 'NULL';
+      await pg(`INSERT INTO horacio.hora_por_hora(linea_id,fecha,hora_slot,plan,real,t_productivo_min,origen,capturado_por,nota,corrige_id) VALUES('${esc(lid)}','${fecha}','${esc(slot)}',${plan == null ? 'NULL' : plan},${real},60,'panel_manual','${esc(by)}',${nota},'${cur[0].id}')`);
       return J({ ok: true });
     }
     if (act === 'create_board') {
@@ -174,7 +187,7 @@ if (q.data === '1') {
   const personas = await pg("SELECT id, nombre, rol, es_admin, (pin_hash IS NOT NULL) AS has_pin FROM horacio.personas WHERE activa ORDER BY (rol='lider') DESC, rol, nombre");
   const tableros = await pg("SELECT l.id, l.codigo, l.nombre, l.grupo, l.orden, l.unidad, l.captura, l.supervisor_rol, l.lider_persona_id, p.nombre AS lider FROM horacio.lineas l LEFT JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE l.activa ORDER BY l.grupo, l.orden");
   const causas = await pg("SELECT codigo, boton_texto FROM horacio.causas_paro WHERE activa ORDER BY orden");
-  const hxh = await pg(`SELECT h.linea_id, h.hora_slot, h.real, h.plan, h.sin_dato, h.origen, h.capturado_por, pr.nombre AS reporto FROM horacio.hora_por_hora h LEFT JOIN horacio.personas pr ON pr.chat_id=h.reporto_chat_id WHERE h.fecha='${fecha}' ORDER BY h.ts`);
+  const hxh = await pg(`SELECT h.linea_id, h.hora_slot, h.real, h.plan, h.sin_dato, h.origen, h.capturado_por, pr.nombre AS reporto FROM horacio.hxh_vigente h LEFT JOIN horacio.personas pr ON pr.chat_id=h.reporto_chat_id WHERE h.fecha='${fecha}' ORDER BY h.ts`);
   let puras = 0, manual = 0, sind = 0;
   hxh.forEach((r) => { if (r.sin_dato) sind++; else if (r.origen === 'panel_manual') manual++; else puras++; });
   return J({
@@ -222,7 +235,7 @@ const PAGE = [
 '<script>',
 'var TK=new URLSearchParams(location.search).get("token")||"";',
 'var MEM={};function ssGet(k){try{return sessionStorage.getItem(k)||MEM[k]||"";}catch(e){return MEM[k]||"";}}function ssSet(k,v){MEM[k]=v;try{sessionStorage.setItem(k,v);}catch(e){}}function ssDel(k){MEM[k]="";try{sessionStorage.removeItem(k);}catch(e){}}',
-'var S=ssGet("panel_s"), ME=null, ST=null, TAB="captura", PRE=null, WHO=null, GP=null;',
+'var S=ssGet("panel_s"), ME=null, ST=null, TAB="captura", PRE=null, PREC=null, WHO=null, GP=null;',
 'function tj(s){var t=document.getElementById("toast");t.textContent=s;t.className="show";setTimeout(function(){t.className="";},2800);}',
 'function h(s){return String(s==null?"":s).replace(/[&<>\\"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c];});}',
 'function api(payload){payload.token=TK;return fetch(location.pathname,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();});}',
@@ -263,14 +276,18 @@ const PAGE = [
 '  if(TAB=="captura")return renderMatriz(v);if(TAB=="registrar")return renderReg(v);if(TAB=="tableros")return renderTableros(v);if(TAB=="asignar")return renderAsignar(v);if(TAB=="personas")return renderPersonas(v);}',
 'function renderMatriz(v){var m=buildMap();var grp=null,rows="";',
 '  ST.tableros.forEach(function(t){if(t.grupo!=grp){grp=t.grupo;rows+="<tr><td class=\\"lh grp\\" colspan=\\""+(ST.slots.length+1)+"\\">"+h(grp)+"</td></tr>";}var tds="";',
-'   ST.slots.forEach(function(s){var c=m[ck(t.id,s)];var cls="c-falta",txt="+",ti="registrar";if(c){if(c.sin_dato){cls="c-sd";txt="⛔";ti="sin dato";}else if(c.origen=="panel_manual"){cls="c-manual";txt=(c.real==null?"✓":c.real);ti="manual · "+(c.por||"?");}else{cls="c-lider";txt=(c.real==null?"✓":c.real);ti="líder · "+(c.por||"?");}}var clk=(!c||c.sin_dato);var oc=clk?(" onclick=\\"preReg(\\x27"+t.id+"\\x27,\\x27"+s+"\\x27)\\""):"";tds+="<td><span class=\\"cell "+cls+"\\" title=\\""+ti+"\\""+oc+">"+txt+"</span></td>";});',
+'   ST.slots.forEach(function(s){var c=m[ck(t.id,s)];var cls="c-falta",txt="+",ti="registrar";if(c){if(c.sin_dato){cls="c-sd";txt="⛔";ti="sin dato";}else if(c.origen=="panel_manual"){cls="c-manual";txt=(c.real==null?"✓":c.real);ti="manual · "+(c.por||"?");}else{cls="c-lider";txt=(c.real==null?"✓":c.real);ti="líder · "+(c.por||"?");}}var clk=(!c||c.sin_dato);var captured=(c&&!c.sin_dato);var oc="";if(clk){oc=" onclick=\\"preReg(\\x27"+t.id+"\\x27,\\x27"+s+"\\x27)\\"";}else if(captured&&ME&&ME.es_admin){oc=" onclick=\\"preCorrect(\\x27"+t.id+"\\x27,\\x27"+s+"\\x27,"+(c.real==null?0:c.real)+")\\" style=\\"cursor:pointer\\"";ti="✏️ corregir · "+ti;}tds+="<td><span class=\\"cell "+cls+"\\" title=\\""+ti+"\\""+oc+">"+txt+"</span></td>";});',
 '   rows+="<tr><td class=\\"lh\\" title=\\""+h(t.nombre)+"\\">"+h(t.nombre)+"<div class=\\"muted\\">"+h(t.lider||"sin líder")+"</div></td>"+tds+"</tr>";});',
 '  var head="<tr><th class=\\"lh\\">Tablero</th>"+ST.slots.map(function(s){return "<th title=\\""+s+"\\">"+s.slice(0,5)+"<br><span style=\\"color:#a1a1aa;font-weight:400\\">"+s.slice(6)+"</span></th>";}).join("")+"</tr>";',
 '  v.innerHTML="<div class=\\"card\\"><h2>Captura del día — "+h(ST.fecha)+"</h2><div class=\\"matwrap\\"><table class=\\"mat\\"><thead>"+head+"</thead><tbody>"+rows+"</tbody></table></div><div class=\\"legend\\"><span><i class=\\"dotc\\" style=\\"background:#e9f7ef\\"></i>de líder</span><span><i class=\\"dotc\\" style=\\"background:#e8effc\\"></i>manual</span><span><i class=\\"dotc\\" style=\\"background:#f1f1f3\\"></i>sin dato</span><span><i class=\\"dotc\\" style=\\"border:1px dashed #dcdce0\\"></i>falta — toca para registrar</span></div></div>";}',
 'function preReg(lid,slot){PRE={linea_id:lid,slot:slot};go("registrar");}',
+'function preCorrect(lid,slot,actual){PREC={linea_id:lid,slot:slot,actual:actual};go("registrar");}',
+'function renderCorrect(v){var pc=PREC;PREC=null;var tn=(ST.tableros.filter(function(x){return x.id==pc.linea_id;})[0]||{}).nombre||"";',
+'  v.innerHTML="<div class=\\"card\\"><h2>Corregir hora capturada</h2><div class=\\"muted\\" style=\\"margin-bottom:10px\\">"+h(tn)+" · "+pc.slot+" · valor actual: <b>"+pc.actual+"</b>. Queda como evento nuevo (no borra el original; se conserva para auditoría) firmado por <b>"+h(ME?ME.nombre:"")+"</b>.</div><div class=\\"row\\"><div class=\\"field\\"><label>Nuevo valor</label><input id=\\"co_p\\" inputmode=\\"numeric\\" value=\\""+pc.actual+"\\" style=\\"width:100px\\"></div><div class=\\"field\\" style=\\"flex:1;min-width:160px\\"><label>Motivo de la corrección</label><input id=\\"co_n\\" placeholder=\\"p.ej. dato mal capturado\\"></div><button class=\\"btn primary\\" onclick=\\"doCorrect(\\x27"+pc.linea_id+"\\x27,\\x27"+pc.slot+"\\x27)\\">Guardar corrección</button> <button class=\\"btn\\" onclick=\\"go(\\x27captura\\x27)\\">cancelar</button></div></div>";}',
+'async function doCorrect(lid,slot){var p=document.getElementById("co_p").value,n=document.getElementById("co_n").value;var d=await post({action:"correct",linea_id:lid,slot:slot,real:p,nota:n});if(d.ok){tj("Corregido ✓");await load();go("captura");}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
 'function bOpts(sel){return ST.tableros.map(function(t){return "<option value=\\""+t.id+"\\""+(sel==t.id?" selected":"")+">"+h(t.nombre)+"</option>";}).join("");}',
 'function sOpts(sel){return ST.slots.map(function(s){return "<option"+(sel==s?" selected":"")+">"+s+"</option>";}).join("");}',
-'function renderReg(v){var pl=PRE||{};var causas="<option value=\\"\\">— sin causa —</option>"+ST.causas.map(function(c){return "<option value=\\""+c.codigo+"\\">"+h(c.boton_texto)+"</option>";}).join("");',
+'function renderReg(v){if(PREC){return renderCorrect(v);}var pl=PRE||{};var causas="<option value=\\"\\">— sin causa —</option>"+ST.causas.map(function(c){return "<option value=\\""+c.codigo+"\\">"+h(c.boton_texto)+"</option>";}).join("");',
 '  v.innerHTML="<div class=\\"card\\"><h2>Registrar una hora no capturada</h2><div class=\\"row\\"><div class=\\"field\\"><label>Tablero</label><select id=\\"r_b\\">"+bOpts(pl.linea_id)+"</select></div><div class=\\"field\\"><label>Hora</label><select id=\\"r_s\\">"+sOpts(pl.slot)+"</select></div><div class=\\"field\\"><label>Piezas</label><input id=\\"r_p\\" inputmode=\\"numeric\\" placeholder=\\"0\\" style=\\"width:90px\\"></div><div class=\\"field\\"><label>Causa (opcional)</label><select id=\\"r_c\\">"+causas+"</select></div><div class=\\"field\\" style=\\"flex:1;min-width:160px\\"><label>Nota (opcional)</label><input id=\\"r_n\\" placeholder=\\"motivo\\"></div><button class=\\"btn primary\\" onclick=\\"doReg()\\">Registrar</button></div><div class=\\"muted\\" style=\\"margin-top:10px\\">Quedará firmado: origen <b>manual</b> · por <b>"+h(ME?ME.nombre:"")+"</b>.</div></div>";PRE=null;}',
 'async function doReg(){var p=document.getElementById("r_p").value;if(!p&&p!=="0"){tj("Escribe las piezas");return;}var d=await post({action:"backfill",linea_id:document.getElementById("r_b").value,slot:document.getElementById("r_s").value,real:p,causa:document.getElementById("r_c").value,nota:document.getElementById("r_n").value});if(d.ok){tj("Registrado ✓");await load();go("captura");}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
 'function rolSel(id,sel){var R=["paros","faltantes","calidad","mantenimiento","direccion"];return "<select id=\\""+id+"\\">"+R.map(function(r){return "<option"+(sel==r?" selected":"")+">"+r+"</option>";}).join("")+"</select>";}',
