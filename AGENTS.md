@@ -15,43 +15,50 @@ Fuente de verdad operativa (lo que n8n lee): tablas `horacio.*` en Supabase.
 - Patrón bot: Webhook + nodo **Code** que hace `httpRequest` a `/pg/query` y a la API de Telegram
   (verificado: el Code node usa `this.helpers.httpRequest` en esta instancia)
 
-## Estado actual (snapshot · 2026-06-16)
+## Estado actual (snapshot · 2026-06-18)
 **Piloto EN VIVO** — `Horacio - Scheduler` ACTIVO, produciendo datos reales.
 
-**Tableros y líderes (16 tableros activos, modelo "1 líder = varios tableros"):**
+**Tableros y líderes (17 tableros activos, modelo "1 líder = varios tableros"):**
 | Grupo | Tableros | Líder | Alta |
 |---|---|---|---|
 | SMT | SMT 411&481 · SMT 520 (102/hr ofic.) | Viridiana Escalona | ✅ |
 | PTH | PTH · Ola · Soldeo · ICT/FCT · Conformal (Yadira) | Yadira Magdariaga | ✅ ⚠️ *de vacaciones; la cubre Gabriela (ver Relevos)* |
-| CONFORMAL | Conformal (Rocío) · Grabación · Limpieza · FCT · Pasta/Silicon/Resina · Ensambles · Prueba (FCT) · Empaque | Rocío (Chío) | ✅ |
+| CONFORMAL | Conformal 1 · Conformal 2 · Grabación · Limpieza · FCT · Pasta/Silicon/Resina · Ensambles · Prueba (FCT) · Empaque | Rocío (Chío) | ✅ |
 | EMBARQUES | Embarques (tarjetas retiradas) | Brenda Medina | ✅ |
 
-> *Conformal (Rocío)* (`CONFORMAL_R`): se desactivó en sql/012 (al pasar Rocío a sus 7
-> sub-procesos) y se **reintegró en sql/014** con su histórico intacto (misma fila;
-> 37 HxH / 1182 pzs, 12–18 jun). Rocío lleva ahora **8 tableros** (Conformal + los 7).
+> *Conformal (Rocío)*: se reintegró con su histórico (sql/014) y se **dividió en 2 tableros**
+> (Conformal 1 y 2, sql/020) porque corre 2 modelos a la vez → Rocío lleva **9 tableros**.
 
 **Dueños de escalamiento:** Daniel Nava (paros/Producción) · Nayeli Hernández
 (faltantes; **jefa de Embarques**) · Marco Sotelo (calidad; **+ recibe resumen**) ·
-Juan Carlos Martínez "JC" (mantenimiento) · Jorge Ramírez (dirección/resumen).
+Juan Carlos Martínez "JC" (mantenimiento) · Jorge Ramírez (dirección/resumen) ·
+**Ivonne (RH)** ⏳ *falta `/start → 🤝 RH` para recibir el feedback de la encuesta*.
 
-**Crons activos (`Horacio - Scheduler` `ilJpIucqEBpKnFgT`, TZ MX, L–V):** órdenes
+**Crons activos (`Horacio - Scheduler` `ilJpIucqEBpKnFgT`, TZ MX, L–V) — 7:** órdenes
 `45 6` → ping `35 7-15` → recordatorio `50 7-15` → escala no-captura `58 7-15` →
-resumen líder `40 15` → resumen Dirección `0 17`.
+resumen líder `40 15` → resumen Dirección `0 17` → **encuesta de salida `0 18`**.
+
+**Apps web:** **Dashboard** (Dirección, solo lectura, sin nombres) `…/horacio-dash?token=<DASH_TOKEN>`
+(`ng4loQv932n2AIRC`) · **Panel de captura** (supervisión, con escritura, **login por PIN**)
+`…/horacio-panel?token=<PANEL_TOKEN>` (`4sJAO9urzrgQowJB`).
+**IA:** plática de la encuesta de salida usa **Claude Haiku** (`ANTHROPIC_API_KEY` en secrets).
+**Guía de uso / instructivo:** ver `Horacio - Guia de Uso e Instructivo.md`.
 
 **Ventanas HxH:** turno 6:30–15:30 → 9 ventanas de :30 (06:30-07:30 … 14:30-15:30).
 **Meta/cumplimiento:** Daniel fija OT+meta por tablero con `/orden`; si no hay, usa
 estándar oficial; si no, captura conteo (piezas/cajas según `lineas.unidad`).
 
-**Dashboard:** `https://n8n.nexiasoluciones.com.mx/webhook/horacio-dash?token=<DASH_TOKEN>`
-(workflow `ng4loQv932n2AIRC`). **Espejo de validación** ON → copia todo al chat de
-prueba `5367409334` (apagar con `VALIDATOR=null`).
+**Espejo de validación** ON → copia todo `sendMessage` al chat de prueba `5367409334`
+(apagar con `VALIDATOR=null` en el bot).
 
-**Decisiones abiertas:** (1) **Relevo Yadira→Gabriela** (vacaciones): pendiente —
-recomendado reasignar los 5 tableros a una persona "Gabriela" nueva (preserva a Yadira);
-hoy un `/start` de Gabriela heredaría los tableros pero dejaría el nombre "Yadira".
-(2) Estándares oficiales PTH/ola y Conformal. (3) Alta de Pamela/Ivonne/NexIA como
-receptores de resumen. (4) Embarques captura **por tarjeta (NP + cantidad)**, varias
-por hora; queda de conteo (sin meta) salvo que Daniel le ponga meta con `/orden`.
+**Pendientes OPERATIVOS (alta de gente, no código):** (1) **Ivonne (RH)** → `/start → 🤝 RH`
+para recibir el feedback de la encuesta. (2) **Daniel/Jorge** → abrir el panel y **crear su
+PIN**, luego asignar PINs al resto en "Personas / PIN". (3) **Daniel** → `/orden` con
+**OT+modelo+meta** de Conformal 1 y 2 (y revisar PTH, que venía reportando >115%).
+
+**Decisiones abiertas:** (1) **Relevo Yadira→Gabriela** (vacaciones): reasignar sus 5
+tableros a una persona "Gabriela" nueva. (2) Estándares oficiales de PTH/ola y Conformal
+con Ingeniería.
 
 ---
 
