@@ -18,16 +18,17 @@ Fuente de verdad operativa (lo que n8n lee): tablas `horacio.*` en Supabase.
 ## Estado actual (snapshot · 2026-06-16)
 **Piloto EN VIVO** — `Horacio - Scheduler` ACTIVO, produciendo datos reales.
 
-**Tableros y líderes (15 tableros activos, modelo "1 líder = varios tableros"):**
+**Tableros y líderes (16 tableros activos, modelo "1 líder = varios tableros"):**
 | Grupo | Tableros | Líder | Alta |
 |---|---|---|---|
 | SMT | SMT 411&481 · SMT 520 (102/hr ofic.) | Viridiana Escalona | ✅ |
 | PTH | PTH · Ola · Soldeo · ICT/FCT · Conformal (Yadira) | Yadira Magdariaga | ✅ ⚠️ *de vacaciones; la cubre Gabriela (ver Relevos)* |
-| CONFORMAL | Grabación · Limpieza · FCT · Pasta/Silicon/Resina · Ensambles · Prueba (FCT) · Empaque | Rocío (Chío) | ✅ |
+| CONFORMAL | Conformal (Rocío) · Grabación · Limpieza · FCT · Pasta/Silicon/Resina · Ensambles · Prueba (FCT) · Empaque | Rocío (Chío) | ✅ |
 | EMBARQUES | Embarques (tarjetas retiradas) | Brenda Medina | ✅ |
 
-> *Conformal (Rocío)* (`CONFORMAL_R`) quedó **inactivo** (sql/012): Rocío pasó de 1
-> tablero a sus 7 sub-procesos. El historial de Conformal se conserva.
+> *Conformal (Rocío)* (`CONFORMAL_R`): se desactivó en sql/012 (al pasar Rocío a sus 7
+> sub-procesos) y se **reintegró en sql/014** con su histórico intacto (misma fila;
+> 37 HxH / 1182 pzs, 12–18 jun). Rocío lleva ahora **8 tableros** (Conformal + los 7).
 
 **Dueños de escalamiento:** Daniel Nava (paros/Producción) · Nayeli Hernández
 (faltantes; **jefa de Embarques**) · Marco Sotelo (calidad; **+ recibe resumen**) ·
@@ -396,7 +397,7 @@ curl -s ".../bot<TOKEN>/getWebhookInfo"
 - Workflow scheduler: `ilJpIucqEBpKnFgT` (Horacio - Scheduler) · 6 crons (ver snapshot)
 - Workflow dashboard: `ng4loQv932n2AIRC` (Horacio - Dashboard) · fuente `n8n/horacio-dash.code.js`
 - Workflow panel: `4sJAO9urzrgQowJB` (Horacio - Panel, GET+POST `/horacio-panel`) · fuente `n8n/horacio-panel.code.js`
-- Schema: `horacio` · migraciones en `sql/001`…`sql/013`
+- Schema: `horacio` · migraciones en `sql/001`…`sql/014`
 - Secreto extra: `PANEL_TOKEN` en `scripts/secrets.env` (token del panel de captura)
 - Secretos (no en git): `scripts/secrets.env` → BOT_TOKEN, SERVICE_ROLE_KEY, ADMIN_SECRET, DASH_TOKEN
 - Deploy de un Code node: `python3 scripts/push_code.py <archivo> <workflow_id> "<node>"`
