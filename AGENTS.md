@@ -236,6 +236,15 @@ real, para revisar si la meta está mal o la captura inflada. Detectó casos rea
 Conformal-Yadira 126%). El número del KPI sigue siendo `sumReal/sumPlan` pero `sumReal` ya
 viene capado. Fuente: `horacio-dash.code.js` (tableros map: pctRaw/pct/over · payload.revisar).
 
+**Backlog R3-HDB dashboard (2026-06-18):** (11) **Bug denominador heartbeat:** `COUNT(l.id)`
+se inflaba por el JOIN con hora_por_hora → `COUNT(DISTINCT l.id)`. Esperadas = nº tableros ×
+ventanas cerradas (Rocío 8×7=56). (10) KPI **"Acuse prom." → "Tiempo de reacción (7d)"**:
+ahora promedio de `duracion_min` de paros **cerrados** (de marcar a cerrar el andón), color por
+meta 10–15 min. (12) **Dato sospechoso** sube de >105% a **>115%** (estándar 85% → rango
+esperado 85–115%); wording "dato sospechoso". (13) **Gráfica "Cumplimiento por día (7d)"**
+(`cSemana`/`semana`): barras por día con cumplimiento capado por proceso (`LEAST(real,meta)`
+por línea-día) + promedio de la semana — para la junta. Fuente: `horacio-dash.code.js`.
+
 **Notas explicativas en los KPIs (2026-06-18):** cada casilla KPI es **tocable** (ícono
 ⓘ); al tocarla despliega qué mide (y `title` para hover en escritorio). Textos por KPI en
 `kpi(v,l,c,info)` → cumplimiento, tableros reportando, paros abiertos, paro acumulado,
