@@ -47,9 +47,10 @@ const winClose = (h) => pad2(h - 1) + ':30-' + pad2(h) + ':30';
 // plan = meta de la OT de hoy (la fija Daniel) → si no, estándar oficial → si no, null (solo piezas)
 const PLAN_SQL = "COALESCE((SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND o.vigente ORDER BY o.ts DESC LIMIT 1),(SELECT e.piezas_hora FROM horacio.estandares e WHERE e.linea_id=l.id AND e.vigente=true ORDER BY e.created_at DESC LIMIT 1))";
 const ORDEN_SQL = "(SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND o.vigente ORDER BY o.ts DESC LIMIT 1)";
+const MODELO_SQL = "(SELECT o.modelo FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND o.vigente ORDER BY o.ts DESC LIMIT 1)";
 const boardsByPid = async (pid) => {
-  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, l.unidad, l.captura, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden FROM horacio.lineas l WHERE l.lider_persona_id='${pid}' AND l.activa ORDER BY l.orden, l.codigo`);
-  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, unidad: x.unidad || 'piezas', captura: x.captura || 'conteo', plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null }));
+  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, l.unidad, l.captura, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden, ${MODELO_SQL} AS modelo FROM horacio.lineas l WHERE l.lider_persona_id='${pid}' AND l.activa ORDER BY l.orden, l.codigo`);
+  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, unidad: x.unidad || 'piezas', captura: x.captura || 'conteo', plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null, modelo: x.modelo || null }));
 };
 
 const __i = $input.first().json;
@@ -309,8 +310,8 @@ const setSess = async (flujo, step, d) => {
 };
 // tableros de la líder que escribe (por su chat_id)
 const myBoards = async () => {
-  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, l.unidad, l.captura, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden FROM horacio.lineas l JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE p.chat_id=${chat_id} AND p.activa AND l.activa ORDER BY l.orden, l.codigo`);
-  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, unidad: x.unidad || 'piezas', captura: x.captura || 'conteo', plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null }));
+  const r = await pg(`SELECT l.id AS linea_id, l.codigo, l.nombre, l.unidad, l.captura, ${PLAN_SQL} AS plan, ${ORDEN_SQL} AS orden, ${MODELO_SQL} AS modelo FROM horacio.lineas l JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE p.chat_id=${chat_id} AND p.activa AND l.activa ORDER BY l.orden, l.codigo`);
+  return r.map((x) => ({ linea_id: x.linea_id, codigo: x.codigo, nombre: x.nombre, unidad: x.unidad || 'piezas', captura: x.captura || 'conteo', plan: x.plan == null ? null : Number(x.plan), orden: x.orden || null, modelo: x.modelo || null }));
 };
 const menu = async (txt) => {
   await tg('sendMessage', { chat_id, text: txt || '¿Qué necesitas?', reply_markup: { inline_keyboard: [[{ text: '🛑 Reportar paro', callback_data: 'paro_start' }], [{ text: '📦 Falta material', callback_data: 'falt_start' }], [{ text: '🔎 Reportar calidad', callback_data: 'cal_start' }]] } });
@@ -726,7 +727,7 @@ if (action === 'hxh_board') {
     return [{ json: { action: 'hxh_board_tj' } }];
   }
   const d = Object.assign({}, s.d, { cur: id });
-  const ot = board.orden ? (' · OT ' + board.orden) : '';
+  const ot = (board.orden ? (' · OT ' + board.orden) : '') + (board.modelo ? (' · ' + board.modelo) : '');
   if (board.plan != null) {
     await setSess('hxh', 'hxh_meta', d);
     await tg('sendMessage', { chat_id, text: `${board.nombre}${ot}, ${d.slot}: ¿salió la meta (${board.plan})?`, reply_markup: { inline_keyboard: [[{ text: '✅ Sí', callback_data: 'hxh_si' }, { text: '❌ Faltó', callback_data: 'hxh_no' }]] } });
@@ -837,18 +838,25 @@ if (action === 'ignore' && msg && (text || photo)) {
   if (s && s.step === 'orden_ot') {
     const ot = (text || '').trim();
     if (!ot) { await tg('sendMessage', { chat_id, text: 'Escríbeme la OT (texto).' }); return [{ json: { action: 'orden_ot_bad' } }]; }
-    await setSess('orden', 'orden_meta', Object.assign({}, s.d, { orden: ot }));
-    await tg('sendMessage', { chat_id, text: `¿Meta por hora de ${esc(s.d.lnombre)}? (solo el número)` });
+    await setSess('orden', 'orden_modelo', Object.assign({}, s.d, { orden: ot }));
+    await tg('sendMessage', { chat_id, text: `¿Qué modelo / tarjeta corre en ${esc(s.d.lnombre)}? Escríbelo (o "-" si no aplica).` });
     return [{ json: { action: 'orden_ot' } }];
+  }
+  if (s && s.step === 'orden_modelo') {
+    let modelo = (text || '').trim();
+    if (modelo === '-' || /^(no|n\/a|na|ninguno)$/i.test(modelo)) modelo = '';
+    await setSess('orden', 'orden_meta', Object.assign({}, s.d, { modelo: modelo.slice(0, 60) }));
+    await tg('sendMessage', { chat_id, text: `¿Meta por hora de ${esc(s.d.lnombre)}${modelo ? ' (' + esc(modelo.slice(0, 60)) + ')' : ''}? (solo el número)` });
+    return [{ json: { action: 'orden_modelo' } }];
   }
   if (s && s.step === 'orden_meta') {
     const m = parseInt(String(text || '').replace(/[^0-9]/g, ''), 10);
     if (isNaN(m) || m < 1 || m > 100000) { await tg('sendMessage', { chat_id, text: 'Mándame la meta por hora como número (1 a 100000) 🙏' }); return [{ json: { action: 'orden_meta_bad' } }]; }
-    const cur = s.d.cur;
+    const cur = s.d.cur, modelo = s.d.modelo || '';
     await pg(`UPDATE horacio.ordenes_tablero SET vigente=false WHERE linea_id='${esc(cur)}' AND fecha=(now() AT TIME ZONE 'America/Mexico_City')::date AND vigente`);
-    await pg(`INSERT INTO horacio.ordenes_tablero(linea_id,fecha,orden,meta_hr,vigente,set_by_chat) VALUES('${esc(cur)}',(now() AT TIME ZONE 'America/Mexico_City')::date,'${esc(s.d.orden)}',${m},true,${chat_id})`);
+    await pg(`INSERT INTO horacio.ordenes_tablero(linea_id,fecha,orden,modelo,meta_hr,vigente,set_by_chat) VALUES('${esc(cur)}',(now() AT TIME ZONE 'America/Mexico_City')::date,'${esc(s.d.orden)}',${modelo ? `'${esc(modelo)}'` : 'NULL'},${m},true,${chat_id})`);
     await setSess('orden', 'orden_menu', {});
-    await tg('sendMessage', { chat_id, text: `Anotado: ${esc(s.d.lnombre)} → OT ${esc(s.d.orden)}, meta ${m}/h.` });
+    await tg('sendMessage', { chat_id, text: `Anotado: ${esc(s.d.lnombre)} → OT ${esc(s.d.orden)}${modelo ? ', modelo ' + esc(modelo) : ''}, meta ${m}/h.` });
     await ordenMenu();
     return [{ json: { action: 'orden_meta' } }];
   }

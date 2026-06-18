@@ -414,6 +414,19 @@ original se **conserva** (valor viejo, quién, cuándo). Los agregados leen de l
 - Probado e2e: 50 (líder) → 80 (corrección); original conservado y marcado sustituido;
   vigente=80; no-admin rechazado. Fuente: `sql/019` · dash/panel/bot.
 
+### ✅ OT + modelo por tablero; Conformal en 2 modelos (2026-06-18, sql/020)
+(R3-HDB-07) Conformal de Rocío corre **2 modelos a la vez** → se llevan como **2 tableros**:
+`CONFORMAL_R` = "Conformal 1 (Rocío)" y nuevo `CONFORMAL_R2` = "Conformal 2 (Rocío)".
+Daniel les fija OT + **modelo** + meta por separado con `/orden`.
+- **`ordenes_tablero.modelo`** (sql/020). `/orden` ahora pregunta **OT → modelo → meta**
+  (step nuevo `orden_modelo`; "-" si no aplica). El modelo se muestra en el **ping**
+  ("PTH · OT 4521 · Andromeda, …") y en la **línea del tablero del dashboard**.
+- `MODELO_SQL` en `boardsByPid`/`myBoards` (board.modelo); `tab` del dashboard trae modelo.
+- Probado e2e: `/orden` → OT-9000 → Andromeda → 120 guardado con modelo. Fuente:
+  `sql/020` · `n8n/horacio-bot.code.js` · `horacio-dash.code.js`.
+> Con esto queda **cerrado el backlog R3-HDB** (items 4,5,6,8,10,11,12,13) + heartbeat /45,
+> motivación por hitos, y encuesta de salida con plática IA.
+
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
 auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**
