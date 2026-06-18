@@ -255,6 +255,32 @@ tarjeta se oculta si no existe ningún tablero `captura='tarjetas'`. `ultimaCap`
 `to_char(MAX(ts) AT TIME ZONE 'America/Mexico_City')`. Probado e2e con datos temporales
 (total/NP/por-hora correctos) y limpiado. Fuente: `n8n/horacio-dash.code.js`.
 
+### ✅ Panel de captura (web, con escritura + trazabilidad) (2026-06-18)
+App web **aparte del dashboard** (que es de Dirección, solo lectura, sin nombres):
+panel **operativo** para líder de área/supervisión. Workflow **`Horacio - Panel`**
+(`4sJAO9urzrgQowJB`, ACTIVO) · Webhook **GET+POST** `/webhook/horacio-panel`
+(2 nodos webhook mismo path, distinto método → 1 Code → Respond). Token en URL
+(`PANEL_TOKEN` en `scripts/secrets.env`). Mismo estilo claro Powered by NexIA.
+- **Trazabilidad (sql/013):** `hora_por_hora` += `origen` (`telegram_lider`|`panel_manual`
+  |`sistema`, default telegram) · `capturado_por` · `nota`. Dato **puro** =
+  `telegram_lider AND NOT sin_dato`. Los huecos `sin_dato` se re-etiquetaron a `sistema`.
+  El bot NO cambió (sus capturas reales cuentan como líder por default).
+- **Identidad:** al entrar eliges tu nombre (personas registradas, en localStorage);
+  toda escritura manual queda firmada `origen='panel_manual' · capturado_por=<tú>`.
+- **4 secciones:** (1) **matriz tablero × ventana HxH** del día con color (verde=líder,
+  azul=manual, gris=sin dato, punteado=falta → toca para registrar) y de quién vino;
+  (2) **registrar hora faltante** (tablero+ventana+piezas+causa/nota; append-only, rechaza
+  si ya hay captura no-sin_dato esa hora); (3) **tableros** (alta/edición: nombre, grupo,
+  unidad, captura, supervisor, desactivar); (4) **asignar líder** por tablero.
+- Escrituras solo POST, token-checked, validadas (piezas 0–100000), todo `/pg/query`.
+  El panel **no manda nada por Telegram**.
+- Probado e2e: lecturas (15 tableros, 9 ventanas), backfill firmado, rechazo de duplicado,
+  crear/editar/asignar, token malo rechazado, JS del navegador `node --check` OK; datos
+  de prueba limpiados. Fuente: `n8n/horacio-panel.code.js` · `sql/013_trazabilidad.sql`.
+- **URL:** `https://n8n.nexiasoluciones.com.mx/webhook/horacio-panel?token=<PANEL_TOKEN>`
+  (compartir SOLO con supervisión — tiene escritura). Refrescar code:
+  `python3 scripts/push_code.py n8n/horacio-panel.code.js 4sJAO9urzrgQowJB "Horacio Panel"`.
+
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
 auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**
@@ -363,7 +389,9 @@ curl -s ".../bot<TOKEN>/getWebhookInfo"
 - Workflow bot: `VKb215KJk5TdEsEY` (Horacio - Webhook) · fuente `n8n/horacio-bot.code.js`
 - Workflow scheduler: `ilJpIucqEBpKnFgT` (Horacio - Scheduler) · 6 crons (ver snapshot)
 - Workflow dashboard: `ng4loQv932n2AIRC` (Horacio - Dashboard) · fuente `n8n/horacio-dash.code.js`
-- Schema: `horacio` · migraciones en `sql/001`…`sql/011`
+- Workflow panel: `4sJAO9urzrgQowJB` (Horacio - Panel, GET+POST `/horacio-panel`) · fuente `n8n/horacio-panel.code.js`
+- Schema: `horacio` · migraciones en `sql/001`…`sql/013`
+- Secreto extra: `PANEL_TOKEN` en `scripts/secrets.env` (token del panel de captura)
 - Secretos (no en git): `scripts/secrets.env` → BOT_TOKEN, SERVICE_ROLE_KEY, ADMIN_SECRET, DASH_TOKEN
 - Deploy de un Code node: `python3 scripts/push_code.py <archivo> <workflow_id> "<node>"`
 - Chat de prueba / espejo de validación: `5367409334`
