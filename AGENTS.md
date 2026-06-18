@@ -226,6 +226,12 @@ semáforo por tablero, **heartbeat de captura por líder** (quién sube info), t
 **escalamientos abiertos**, barras real vs plan por hora, y **Pareto de causas apilado por área/líder** (SMT-Viridiana,
 PTH-Yadira, Conformal-Chío; combina paros formales + causas de merma del HxH ❌, 7d). Debajo, mini-tabla "Causa #1 por área".
 Cada tablero muestra además **OT · meta/h** (de `/orden`) y la unidad correcta (cajas/piezas).
+**Notas explicativas en los KPIs (2026-06-18):** cada casilla KPI es **tocable** (ícono
+ⓘ); al tocarla despliega qué mide (y `title` para hover en escritorio). Textos por KPI en
+`kpi(v,l,c,info)` → cumplimiento, tableros reportando, paros abiertos, paro acumulado,
+faltantes, calidad, y **acuse prom.** (= minutos de reacción a un paro hasta el "Visto 👍",
+7d; mide reacción, no resolución). Sin comillas ASCII en los textos (rompen el string).
+
 **Página endurecida (2026-06-16):** `fetch` con `cache:"no-store"`; lee texto y hace
 `JSON.parse` con mensaje claro si no es JSON (p.ej. token malo → "respuesta no válida");
 muestra `error HTTP <status>`; las gráficas van en try aparte (si Chart.js no carga, el
