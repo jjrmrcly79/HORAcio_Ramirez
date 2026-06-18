@@ -53,6 +53,82 @@ encuesta de salida.
 
 ---
 
+## 2.1 La arquitectura contada como personas
+
+Imagina que Horacio no es un "sistema", sino un **equipo de compañeros** que trabajan
+juntos. Cada pieza técnica es una persona con un oficio:
+
+| "Persona" | En lo técnico es… | Su oficio |
+|---|---|---|
+| 🧑‍🏭 **Horacio** | el bot (n8n) | El compañero que habla con todos por Telegram. |
+| ⏰ **El Relojero** | el Scheduler (crons) | Vigila el reloj y le avisa a Horacio "ya es hora". |
+| 📒 **El Archivista** | Supabase (base de datos) | Apunta todo en su libreta y nunca olvida (con quién, qué, cuándo). |
+| 📣 **El Vocero** | el Dashboard | Le muestra el panorama a Dirección. |
+| 🧰 **El de Piso** | el Panel | Supervisión: registra lo que faltó y corrige (dejando rastro). |
+| 🧠 **El Consejero** | Claude Haiku (IA) | Escucha a la líder al final del día. |
+| 👩‍🔧 **El Operador / La Líder** | persona real | Captura su Hora por Hora. |
+| 🔧 **Los Reaccionadores** | Daniel · Nayeli · Marco · JC | Resuelven paros / faltantes / calidad. |
+
+### La escena de cada hora (el relevo de la captura)
+
+```
+  :35 en punto…
+
+  ⏰ El Relojero  ─►  "Horacio, ya son las :35. Pregúntales."
+                          │
+                          ▼
+  🧑‍🏭 Horacio  ─►  (le escribe al Operador por Telegram)
+        "¿Cómo vamos? Hora por hora de 07:30-08:30 — toca tu tablero 👇"
+                          │
+                          ▼
+  👩‍🔧 El Operador  ─►  toca un botón:  ✅ Sí   ·   ❌ Faltó (+causa)   ·   "120 piezas"
+                          │
+                          ▼
+  🧑‍🏭 Horacio  ─►  📒 El Archivista:  "Apunta: SMT 520 · 07:30-08:30 · 120 pzs · lo dijo ella."
+                          │
+        ┌─────────────────┼──────────────────────────┐
+        ▼                 ▼                           ▼
+  📣 El Vocero        🧑‍🏭 Horacio                  (queda guardado
+  ya lo muestra       "¡Vas bien! 🙌" (si cruzó      para el resumen
+  a Dirección          un hito, lo felicita)          del día)
+```
+
+**En una frase:**
+> Cada hora, el **Relojero** le recuerda a **Horacio**; Horacio le pregunta al **Operador**;
+> el Operador contesta con **un toque**; Horacio corre a anotarlo con el **Archivista**; y el
+> **Vocero** lo enseña en el tablero. Si algo se cae, Horacio va por un **Reaccionador**.
+
+### ¿Y si el Operador no contesta?
+```
+  :50  🧑‍🏭 Horacio  ─►  "Cuando puedas, aún falta tu hora por hora 🙏"
+  :58  🧑‍🏭 Horacio  ─►  (a su jefe)  "Falta la captura de esta línea, ¿le echas la mano?"
+```
+
+### ¿Y si hay un problema?
+```
+  👩‍🔧 Operador  ─►  🛑 "Se paró por falla de máquina"
+                          │
+  🧑‍🏭 Horacio  ─►  🔧 Reaccionador (JC):  "Paro en SMT por máquina. Acúsalo."
+                          │
+  🔧 JC  ─►  "Visto 👍"  ─►  Horacio: "¿Qué acción tomas?"  ─►  JC la escribe
+                          │
+  👩‍🔧 Operador  ─►  "✅ Ya quedó"  ─►  Horacio: "¿cuántos minutos duró?"  ─►  se cierra
+```
+
+### Al cerrar el día
+```
+  ⏰ Relojero (18:00)  ─►  🧑‍🏭 Horacio  ─►  👩‍🔧 Operador:  "¿cómo te sentiste hoy? 😀/😐/😟"
+                                    │
+                                    ▼
+  🧑‍🏭 Horacio  ↔  🧠 El Consejero (IA):  lo escucha, lo contiene; si fue pesado, avisa a RH.
+```
+
+> 💡 *Tip para video:* esta sección es prácticamente un **guion con personajes** — sirve
+> para animar el relevo de la captura (el Relojero pasa el mensaje a Horacio, Horacio al
+> Operador, y de vuelta al Archivista).
+
+---
+
 ## 3. Los actores (quién usa qué)
 
 | Actor | Cómo entra | Qué hace |
