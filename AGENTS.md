@@ -435,6 +435,24 @@ Daniel les fija OT + **modelo** + meta por separado con `/orden`.
 > Con esto queda **cerrado el backlog R3-HDB** (items 4,5,6,8,10,11,12,13) + heartbeat /45,
 > motivación por hitos, y encuesta de salida con plática IA.
 
+### ✅ Perfiles + memoria de Horacio (motor) (2026-06-19, sql/022)
+Horacio empieza a **personalizar**: aprende de cada plática de salida para acompañar
+mejor. Decisión: la IA **sugiere**, **RH valida** (red de seguridad).
+- **Modelo (sql/022):** `horacio.perfiles` (persona_id PK · `seed` jsonb de los MD ·
+  `aprendido` text CURADO · `sensible` bool, RH-only por defecto) + `perfil_eventos`
+  (append-only · `insight` · `mood` · `estado` sugerido|aceptado|descartado).
+- **Captura:** al cerrar la plática (`fb_cerrar`/6 turnos), `resumirInsight()` (Claude
+  Haiku) saca UNA frase de apoyo (qué la motiva / cómo hablarle, sin diagnóstico) →
+  `perfil_eventos` como **`sugerido`**. `guardarInsight()` también hace upsert del perfil.
+- **Memoria:** `perfilCtx(pid)` arma el contexto SOLO con lo **curado** (`aprendido` +
+  insights `aceptado`) y se inyecta en `askHoracio(msgs, ctx)` (con tacto, nunca citado
+  literal). Los `sugerido` NO se reusan hasta que RH los acepte → no compone inferencias sin revisar.
+- **Privacidad:** perfiles SOLO para RH/NexIA, nunca en el dashboard; objetivo apoyo, no vigilancia.
+- Probado e2e: plática → insight `sugerido` correcto + perfil creado.
+- **Pendiente:** (1) **importar los MD de RH** a `perfiles.seed` (falta que Daniel/Juan
+  compartan los archivos → escribir parser). (2) **Pantalla de revisión** en el Panel
+  para que RH acepte/edite los `sugerido` y cure el `aprendido`. Fuente: `sql/022` · `n8n/horacio-bot.code.js`.
+
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
 auto-servicio: **Brenda** hace `/start → 📋 línea → Embarques`; **Pamela/Ivonne/NexIA**

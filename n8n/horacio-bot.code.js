@@ -329,12 +329,44 @@ const askArea = async () => {
 // menú HxH: un botón por tablero pendiente; cierra cuando completa todos
 // Plática de la encuesta de salida con Claude Haiku (personalidad de Horacio, contención breve)
 const FB_SYS = 'Eres Horacio Ramírez, el compañero del hora por hora de la planta Mapartel. Aquí NO hablas de producción: estás escuchando a una líder al terminar su turno. Eres cálido, breve y mexicano; validas lo que siente, no regañas, no comparas líneas, no diagnosticas ni das indicaciones médicas o de Recursos Humanos. Responde SIEMPRE en 1 o 2 frases, con empatía real y a veces una pregunta suave. Si te cuenta algo serio (acoso, riesgo, salud, un conflicto fuerte), con calma dile que lo vas a pasar a Recursos Humanos para que la apoyen. Cierra dejando la puerta abierta.';
-const askHoracio = async (msgs) => {
+const askHoracio = async (msgs, ctx) => {
   try {
-    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 220, system: FB_SYS, messages: msgs }, json: true });
+    const sys = FB_SYS + (ctx ? `\n\nLo que ya sabes de ella (úsalo con tacto, NUNCA lo cites literal; solo para acompañarla mejor): ${ctx}` : '');
+    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 220, system: sys, messages: msgs }, json: true });
     const t = r && r.content && r.content[0] && r.content[0].text;
     return t || 'Aquí te leo 🙏';
   } catch (e) { return 'Gracias por contarme 🙏 (no pude responder bien ahorita, pero quedó guardado).'; }
+};
+// MEMORIA: contexto CURADO del perfil (solo lo aceptado por RH) para personalizar la plática
+const perfilCtx = async (pid) => {
+  if (!pid) return '';
+  try {
+    const p = await pg(`SELECT aprendido FROM horacio.perfiles WHERE persona_id='${esc(pid)}'`);
+    const ev = await pg(`SELECT insight FROM horacio.perfil_eventos WHERE persona_id='${esc(pid)}' AND estado='aceptado' ORDER BY ts DESC LIMIT 3`);
+    const parts = [];
+    if (p.length && p[0].aprendido) parts.push(p[0].aprendido);
+    ev.forEach((e) => parts.push(e.insight));
+    return parts.join(' · ');
+  } catch (e) { return ''; }
+};
+// MEMORIA: al cerrar la plática, la IA resume un aprendizaje y lo guarda como 'sugerido' (RH lo valida)
+const resumirInsight = async (msgs) => {
+  const sys = 'Ayudas a Horacio a recordar cómo apoyar mejor a una persona del piso. Lee la plática y resume en UNA frase, en tono de apoyo y respeto, lo más útil para acompañarla (qué la motiva, qué le pesa, cómo prefiere que le hablen). NO diagnostiques, no etiquetes, no juzgues. Si no hay nada relevante, responde solo "—".';
+  try {
+    const conv = msgs.map((m) => (m.role === 'user' ? 'Ella: ' : 'Horacio: ') + m.content).join('\n');
+    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 120, system: sys, messages: [{ role: 'user', content: conv }] }, json: true });
+    return ((r && r.content && r.content[0] && r.content[0].text) || '').trim();
+  } catch (e) { return ''; }
+};
+const guardarInsight = async (pid, mood, msgs) => {
+  try {
+    if (!pid) return;
+    await pg(`INSERT INTO horacio.perfiles(persona_id) VALUES('${esc(pid)}') ON CONFLICT DO NOTHING`);
+    if (!msgs || !msgs.length) return;
+    const ins = await resumirInsight(msgs);
+    if (!ins || ins === '—' || ins.length < 3) return;
+    await pg(`INSERT INTO horacio.perfil_eventos(persona_id,mood,insight,fuente,estado) VALUES('${esc(pid)}',${mood ? `'${esc(mood)}'` : 'NULL'},'${esc(ins.slice(0, 500))}','platica','sugerido')`);
+  } catch (e) {}
 };
 // avisa a RH (sin compartir el contenido — solo que dé seguimiento) y marca el feedback
 const escalarRH = async (fid, cid) => {
@@ -641,9 +673,10 @@ if (action === 'fb_mood') {
   const mood = data.slice(4);
   if (['bien', 'normal', 'pesado'].indexOf(mood) < 0) return [{ json: { action: 'fb-badmood' } }];
   const p = await pg(`SELECT id FROM horacio.personas WHERE chat_id=${chat_id} LIMIT 1`);
-  const pid = p.length ? `'${p[0].id}'` : 'NULL';
+  const pidRaw = p.length ? p[0].id : null;
+  const pid = pidRaw ? `'${pidRaw}'` : 'NULL';
   const ins = await pg(`INSERT INTO horacio.feedback(persona_id,chat_id,fecha,mood) VALUES(${pid},${chat_id},(now() AT TIME ZONE 'America/Mexico_City')::date,'${mood}') RETURNING id`);
-  await setSess('feedback', 'fb_texto', { fid: ins[0].id, mood, msgs: [] });
+  await setSess('feedback', 'fb_texto', { fid: ins[0].id, mood, pid: pidRaw, msgs: [] });
   const ack = mood === 'bien' ? '¡Me alegra! 🙌' : (mood === 'normal' ? 'Va, gracias por decirme 🙏' : 'Lamento que estuviera pesado 🙏');
   await tg('sendMessage', { chat_id, text: `${ack} ¿Algo que quieras contarme? Lo que salió bien, lo que te estorbó, o si traes una duda — aquí te leo. (o escribe “no” si prefieres dejarlo así)` });
   return [{ json: { action: 'fb_mood', mood } }];
@@ -653,7 +686,7 @@ if (action === 'fb_cerrar') {
   const s = await readSess();
   await setSess('feedback', 'idle', {});
   await tg('sendMessage', { chat_id, text: 'Gracias por contarme 🙏 Descansa, mañana seguimos.' });
-  if (s && s.d && s.d.mood === 'pesado' && s.d.fid) await escalarRH(s.d.fid, chat_id);
+  if (s && s.d) { await guardarInsight(s.d.pid, s.d.mood, s.d.msgs); if (s.d.mood === 'pesado' && s.d.fid) await escalarRH(s.d.fid, chat_id); }
   return [{ json: { action: 'fb_cerrar' } }];
 }
 
@@ -792,31 +825,35 @@ if (action === 'ignore' && msg && (text || photo)) {
     if (/^(no|nada|na|todo bien|asi esta bien|así está bien|estoy bien|gracias|ninguna)\.?$/i.test(t)) {
       await setSess('feedback', 'idle', {});
       await tg('sendMessage', { chat_id, text: 'Va, gracias por tu día 🙏 Descansa, aquí estoy mañana.' });
+      await guardarInsight(s.d.pid, s.d.mood, []);
       if (s.d.mood === 'pesado') await escalarRH(s.d.fid, chat_id);
       return [{ json: { action: 'fb_texto_no' } }];
     }
+    const ctx = await perfilCtx(s.d.pid);
     const msgs = [{ role: 'user', content: t }];
-    const reply = await askHoracio(msgs);
+    const reply = await askHoracio(msgs, ctx);
     msgs.push({ role: 'assistant', content: reply });
-    await setSess('feedback', 'fb_chat', { fid: s.d.fid, mood: s.d.mood, msgs, turns: 1 });
+    await setSess('feedback', 'fb_chat', { fid: s.d.fid, mood: s.d.mood, pid: s.d.pid, msgs, turns: 1 });
     await tg('sendMessage', { chat_id, text: reply, reply_markup: { inline_keyboard: [[{ text: '✅ Cerrar la plática', callback_data: 'fb_cerrar' }]] } });
     return [{ json: { action: 'fb_texto' } }];
   }
   if (s && s.flujo === 'feedback' && s.step === 'fb_chat' && s.d.fid) {
     const t = (text || '').trim();
+    const ctx = await perfilCtx(s.d.pid);
     const msgs = (s.d.msgs || []).slice(-10);
     msgs.push({ role: 'user', content: t });
-    const reply = await askHoracio(msgs);
+    const reply = await askHoracio(msgs, ctx);
     msgs.push({ role: 'assistant', content: reply });
     const turns = (s.d.turns || 1) + 1;
     await pg(`UPDATE horacio.feedback SET texto=COALESCE(texto,'')||E'\\n— '||'${esc(t.slice(0, 500))}' WHERE id='${esc(s.d.fid)}'`);
     if (turns >= 6) {
       await setSess('feedback', 'idle', {});
       await tg('sendMessage', { chat_id, text: reply + '\n\nGracias por platicar conmigo 🙏 Descansa. Si quieres, seguimos mañana.' });
+      await guardarInsight(s.d.pid, s.d.mood, msgs);
       if (s.d.mood === 'pesado') await escalarRH(s.d.fid, chat_id);
       return [{ json: { action: 'fb_chat_end' } }];
     }
-    await setSess('feedback', 'fb_chat', { fid: s.d.fid, mood: s.d.mood, msgs: msgs.slice(-10), turns });
+    await setSess('feedback', 'fb_chat', { fid: s.d.fid, mood: s.d.mood, pid: s.d.pid, msgs: msgs.slice(-10), turns });
     await tg('sendMessage', { chat_id, text: reply, reply_markup: { inline_keyboard: [[{ text: '✅ Cerrar la plática', callback_data: 'fb_cerrar' }]] } });
     return [{ json: { action: 'fb_chat' } }];
   }
