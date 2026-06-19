@@ -8,3 +8,7 @@ node_modules/
 
 scripts/secrets.env
 .claude/settings.local.json
+
+# Datos sensibles de personal (perfiles ADKAR + demografía) — NUNCA al repo público.
+# Viven en disco solo para importarlos a Supabase (RH-only); fuera de git.
+Organigrama/

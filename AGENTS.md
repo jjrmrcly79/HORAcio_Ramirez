@@ -449,9 +449,17 @@ mejor. Decisión: la IA **sugiere**, **RH valida** (red de seguridad).
   literal). Los `sugerido` NO se reusan hasta que RH los acepte → no compone inferencias sin revisar.
 - **Privacidad:** perfiles SOLO para RH/NexIA, nunca en el dashboard; objetivo apoyo, no vigilancia.
 - Probado e2e: plática → insight `sugerido` correcto + perfil creado.
-- **Pendiente:** (1) **importar los MD de RH** a `perfiles.seed` (falta que Daniel/Juan
-  compartan los archivos → escribir parser). (2) **Pantalla de revisión** en el Panel
-  para que RH acepte/edite los `sugerido` y cure el `aprendido`. Fuente: `sql/022` · `n8n/horacio-bot.code.js`.
+- **Import de MD (2026-06-19):** `scripts/import_perfiles.py` parsea
+  `Organigrama/02_Contactos/*.md` y carga la ficha a `perfiles.seed` (jsonb, `sensible=true`)
+  para las personas que **ya existen** en `personas` (match por nombre normalizado). **10
+  importados** (Daniel, Marco, Nayeli, Jorge, JC, Carolina, Jésica, Brenda, Viri, Yadira).
+  `aprendido` queda **vacío** → la ficha (con ADKAR/hallazgos) **NO viaja al prompt**; RH la cura.
+  ⚠️ **`Organigrama/` está en `.gitignore`** (datos sensibles ADKAR + demografía) — NUNCA
+  al repo público; solo en disco para importar a Supabase (self-hosted, RLS, service_role).
+  Sin MD de contacto: **Rocío (Chío)**, Diana Pavón, Charly. Operadoras (`08_Operadores/`,
+  ~55) NO importadas (no son usuarias del bot ni están en `personas`) — decisión pendiente.
+- **Pendiente:** **Pantalla de revisión** en el Panel para que RH lea el `seed`, acepte/edite
+  los `sugerido` y cure el `aprendido`. Fuente: `sql/022` · `scripts/import_perfiles.py` · `n8n/horacio-bot.code.js`.
 
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como
