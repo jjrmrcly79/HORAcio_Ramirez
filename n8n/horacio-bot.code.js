@@ -217,7 +217,7 @@ if (b && b.admin) {
     // preview_chat: manda solo a ese chat (para revisar sin avisar a Dirección)
     const recips = b.preview_chat
       ? [{ chat_id: b.preview_chat, nombre: 'preview' }]
-      : await pg("SELECT chat_id, nombre FROM horacio.personas WHERE rol IN ('direccion','resumen') AND chat_id IS NOT NULL AND activa");
+      : await pg("SELECT chat_id, nombre FROM horacio.personas WHERE (rol IN ('direccion','resumen') OR recibe_resumen) AND chat_id IS NOT NULL AND activa");
     if (!recips || !recips.length) return [{ json: { admin: 'resumen_dir', skip: 'sin destinatarios' } }];
     const sem3 = (pct) => pct >= 95 ? '🟢' : (pct >= 80 ? '🟡' : '🔴');
     const tableros = await pg("SELECT id, nombre, grupo, unidad FROM horacio.lineas WHERE activa=true ORDER BY grupo, orden, codigo");

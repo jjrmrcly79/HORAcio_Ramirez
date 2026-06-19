@@ -29,7 +29,8 @@ Fuente de verdad operativa (lo que n8n lee): tablas `horacio.*` en Supabase.
 > *Conformal (Rocío)*: se reintegró con su histórico (sql/014) y se **dividió en 2 tableros**
 > (Conformal 1 y 2, sql/020) porque corre 2 modelos a la vez → Rocío lleva **9 tableros**.
 
-**Dueños de escalamiento:** Daniel Nava (paros/Producción) · Nayeli Hernández
+**Dueños de escalamiento:** Daniel Nava (paros/Producción; **+ recibe resumen Dirección 17:00**
+vía `recibe_resumen`, sql/021) · Nayeli Hernández
 (faltantes; **jefa de Embarques**) · Marco Sotelo (calidad; **+ recibe resumen**) ·
 Juan Carlos Martínez "JC" (mantenimiento) · Jorge Ramírez (dirección/resumen) ·
 **Ivonne (RH)** ⏳ *falta `/start → 🤝 RH` para recibir el feedback de la encuesta*.
