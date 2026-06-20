@@ -41,9 +41,11 @@ const now = nowMX();
 const fecha = now.toFormat('yyyy-LL-dd');
 const getSession = async (t) => {
   if (!t) return null;
-  const r = await pg(`SELECT s.persona_id, s.es_admin, s.nombre FROM horacio.panel_sesiones s WHERE s.token='${esc(t)}' AND s.expira>now() LIMIT 1`);
+  const r = await pg(`SELECT s.persona_id, s.es_admin, s.nombre, p.rol FROM horacio.panel_sesiones s JOIN horacio.personas p ON p.id=s.persona_id WHERE s.token='${esc(t)}' AND s.expira>now() LIMIT 1`);
   return r.length ? r[0] : null;
 };
+// quién puede ver/curar perfiles: admin del panel o RH (datos sensibles)
+const puedePerfiles = (S) => !!(S && (S.es_admin || S.rol === 'rh'));
 const newSession = async (pid, nombre, esAdmin) => {
   const tk = (await pg(`SELECT encode(gen_random_bytes(24),'hex') AS t`))[0].t;
   await pg(`INSERT INTO horacio.panel_sesiones(token,persona_id,nombre,es_admin,expira) VALUES('${tk}','${esc(pid)}','${esc(nombre)}',${esAdmin ? 'true' : 'false'},now()+interval '12 hours')`);
@@ -100,6 +102,21 @@ if (isPost) {
       const pid = String(body.persona_id || '');
       if (pid === String(S.persona_id) && !body.es_admin) return J({ ok: false, error: 'No te quites a ti mismo el admin.' });
       await pg(`UPDATE horacio.personas SET es_admin=${body.es_admin ? 'true' : 'false'} WHERE id='${esc(pid)}'`);
+      return J({ ok: true });
+    }
+    if (act === 'perfil_estado') { // aceptar / descartar un aprendizaje sugerido
+      if (!puedePerfiles(S)) return J({ ok: false, error: 'Solo RH o un admin.' });
+      const eid = String(body.ev_id || ''), estado = (body.estado === 'aceptado') ? 'aceptado' : (body.estado === 'descartado') ? 'descartado' : (body.estado === 'sugerido' ? 'sugerido' : null);
+      if (!eid || !estado) return J({ ok: false, error: 'Datos inválidos.' });
+      await pg(`UPDATE horacio.perfil_eventos SET estado='${estado}' WHERE id='${esc(eid)}'`);
+      return J({ ok: true });
+    }
+    if (act === 'perfil_aprendido') { // curar el resumen que Horacio usa
+      if (!puedePerfiles(S)) return J({ ok: false, error: 'Solo RH o un admin.' });
+      const pid = String(body.persona_id || ''), txt = String(body.aprendido == null ? '' : body.aprendido).slice(0, 800);
+      const pr = await pg(`SELECT 1 FROM horacio.personas WHERE id='${esc(pid)}'`);
+      if (!pr.length) return J({ ok: false, error: 'Persona no existe.' });
+      await pg(`INSERT INTO horacio.perfiles(persona_id,aprendido) VALUES('${esc(pid)}',${txt ? `'${esc(txt)}'` : 'NULL'}) ON CONFLICT(persona_id) DO UPDATE SET aprendido=EXCLUDED.aprendido, actualizado_ts=now()`);
       return J({ ok: true });
     }
     const by = S.nombre; // firma verificada por la sesión
@@ -181,6 +198,20 @@ if (q.data === 'who') {
   const personas = await pg("SELECT id, nombre, rol, es_admin, (pin_hash IS NOT NULL) AS has_pin FROM horacio.personas WHERE activa ORDER BY (rol='lider') DESC, rol, nombre");
   return J({ personas });
 }
+if (q.data === 'perfiles') {
+  const S = await getSession(q.s);
+  if (!S) return J({ ok: false, code: 'auth' });
+  if (!puedePerfiles(S)) return J({ ok: false, error: 'Solo RH o un admin puede ver perfiles.' });
+  const ps = await pg("SELECT p.id, p.nombre, p.rol, pf.aprendido, (pf.seed->>'texto') AS ficha FROM horacio.personas p LEFT JOIN horacio.perfiles pf ON pf.persona_id=p.id WHERE p.activa AND p.chat_id IS NOT NULL ORDER BY (p.rol='lider') DESC, p.nombre");
+  const ev = await pg("SELECT id, persona_id, insight, mood, estado, fecha::text AS fecha FROM horacio.perfil_eventos WHERE estado IN ('sugerido','aceptado') ORDER BY ts DESC");
+  const byP = {};
+  ev.forEach((e) => { (byP[e.persona_id] = byP[e.persona_id] || []).push(e); });
+  return J({ me: { nombre: S.nombre, es_admin: S.es_admin, rol: S.rol }, perfiles: ps.map((p) => ({
+    id: p.id, nombre: p.nombre, rol: p.rol, aprendido: p.aprendido || '', ficha: p.ficha ? String(p.ficha).slice(0, 6000) : '',
+    sugeridos: (byP[p.id] || []).filter((e) => e.estado === 'sugerido'),
+    aceptados: (byP[p.id] || []).filter((e) => e.estado === 'aceptado'),
+  })) });
+}
 if (q.data === '1') {
   const S = await getSession(q.s);
   if (!S) return J({ ok: false, code: 'auth' });
@@ -193,7 +224,7 @@ if (q.data === '1') {
   return J({
     fecha, hora: now.toFormat('HH:mm'), slots: SLOTS, personas, tableros, causas,
     hxh: hxh.map((r) => ({ linea_id: r.linea_id, slot: r.hora_slot, real: r.real == null ? null : Number(r.real), plan: r.plan == null ? null : Number(r.plan), sin_dato: r.sin_dato, origen: r.origen, por: r.capturado_por || r.reporto || null })),
-    resumen: { puras, manual, sind }, me: { nombre: S.nombre, es_admin: S.es_admin },
+    resumen: { puras, manual, sind }, me: { nombre: S.nombre, es_admin: S.es_admin, rol: S.rol, perfiles: puedePerfiles(S) },
   });
 }
 
@@ -268,12 +299,12 @@ const PAGE = [
 '   document.getElementById("sub").textContent=d.fecha+" · "+d.hora+" (MX) · "+d.resumen.puras+" de líder · "+d.resumen.manual+" manual · "+d.resumen.sind+" sin dato";',
 '   render();',
 '  }catch(e){document.getElementById("sub").textContent="error: "+e.message;}}',
-'function tabs(){var ts=[["captura","Captura en vivo"],["registrar","Registrar hora"],["tableros","Tableros"],["asignar","Asignar líder"]];if(ME&&ME.es_admin)ts.push(["personas","Personas / PIN"]);',
+'function tabs(){var ts=[["captura","Captura en vivo"],["registrar","Registrar hora"],["tableros","Tableros"],["asignar","Asignar líder"]];if(ME&&ME.es_admin)ts.push(["personas","Personas / PIN"]);if(ME&&ME.perfiles)ts.push(["perfiles","Perfiles"]);',
 '  document.getElementById("tabs").innerHTML=ts.map(function(t){return "<div class=\\"tab"+(TAB==t[0]?" on":"")+"\\" onclick=\\"go(\\x27"+t[0]+"\\x27)\\">"+t[1]+"</div>";}).join("");}',
 'function go(t){TAB=t;render();}',
 'function ck(l,s){return l+"|"+s;}function buildMap(){var m={};ST.hxh.forEach(function(r){var k=ck(r.linea_id,r.slot);var p=m[k];if(!p||(p.sin_dato&&!r.sin_dato))m[k]=r;});return m;}',
 'function render(){tabs();var v=document.getElementById("view");if(!ST){v.innerHTML="";return;}',
-'  if(TAB=="captura")return renderMatriz(v);if(TAB=="registrar")return renderReg(v);if(TAB=="tableros")return renderTableros(v);if(TAB=="asignar")return renderAsignar(v);if(TAB=="personas")return renderPersonas(v);}',
+'  if(TAB=="captura")return renderMatriz(v);if(TAB=="registrar")return renderReg(v);if(TAB=="tableros")return renderTableros(v);if(TAB=="asignar")return renderAsignar(v);if(TAB=="personas")return renderPersonas(v);if(TAB=="perfiles")return renderPerfiles(v);}',
 'function renderMatriz(v){var m=buildMap();var grp=null,rows="";',
 '  ST.tableros.forEach(function(t){if(t.grupo!=grp){grp=t.grupo;rows+="<tr><td class=\\"lh grp\\" colspan=\\""+(ST.slots.length+1)+"\\">"+h(grp)+"</td></tr>";}var tds="";',
 '   ST.slots.forEach(function(s){var c=m[ck(t.id,s)];var cls="c-falta",txt="+",ti="registrar";if(c){if(c.sin_dato){cls="c-sd";txt="⛔";ti="sin dato";}else if(c.origen=="panel_manual"){cls="c-manual";txt=(c.real==null?"✓":c.real);ti="manual · "+(c.por||"?");}else{cls="c-lider";txt=(c.real==null?"✓":c.real);ti="líder · "+(c.por||"?");}}var clk=(!c||c.sin_dato);var captured=(c&&!c.sin_dato);var oc="";if(clk){oc=" onclick=\\"preReg(\\x27"+t.id+"\\x27,\\x27"+s+"\\x27)\\"";}else if(captured&&ME&&ME.es_admin){oc=" onclick=\\"preCorrect(\\x27"+t.id+"\\x27,\\x27"+s+"\\x27,"+(c.real==null?0:c.real)+")\\" style=\\"cursor:pointer\\"";ti="✏️ corregir · "+ti;}tds+="<td><span class=\\"cell "+cls+"\\" title=\\""+ti+"\\""+oc+">"+txt+"</span></td>";});',
@@ -304,6 +335,19 @@ const PAGE = [
 '  v.innerHTML="<div class=\\"card\\"><h2>Personas — PIN y admin</h2><div class=\\"muted\\" style=\\"margin-bottom:8px\\">Asigna un PIN (4–8 dígitos) y repártelo a cada quien. \\x27Resetear\\x27 cambia uno olvidado.</div>"+rows+"</div>";}',
 'async function doSetPin(pid){var pin=document.getElementById("pin_"+pid).value;var d=await post({action:"set_pin",persona_id:pid,pin:pin});if(d.ok){tj("PIN asignado ✓");await load();}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
 'async function doAdmin(pid,val){var d=await post({action:"toggle_admin",persona_id:pid,es_admin:val});if(d.ok){tj("Listo ✓");await load();}else tj(d.error||"no se pudo");}',
+'async function renderPerfiles(v){v.innerHTML="<div class=\\"card\\"><div class=\\"muted\\">cargando perfiles…</div></div>";',
+'  try{var r=await fetch(location.pathname+"?token="+encodeURIComponent(TK)+"&data=perfiles&s="+encodeURIComponent(S),{cache:"no-store"});var d=await r.json();}catch(e){v.innerHTML="<div class=\\"card\\"><div class=\\"empty\\">error</div></div>";return;}',
+'  if(d.code=="auth"){logout();return;}if(!d.perfiles){v.innerHTML="<div class=\\"card\\"><div class=\\"empty\\">"+h(d.error||"sin acceso")+"</div></div>";return;}',
+'  v.innerHTML="<div class=\\"muted\\" style=\\"margin-bottom:10px\\">Lo que aceptes/escribas aquí es lo ÚNICO que Horacio usa para personalizar (con tacto, nunca citado literal). Privado de RH.</div>"+d.perfiles.map(perfilCard).join("");}',
+'function perfilCard(p){',
+'  var sug=(p.sugeridos||[]).map(function(e){return "<div class=\\"tline\\"><div style=\\"flex:1\\">💡 "+h(e.insight)+" <span class=\\"muted\\">"+h(e.fecha)+(e.mood?" · "+h(e.mood):"")+"</span></div><div><button class=\\"btn sm primary\\" onclick=\\"doPE(\\x27"+e.id+"\\x27,\\x27aceptado\\x27)\\">aceptar</button> <button class=\\"btn sm\\" onclick=\\"doPE(\\x27"+e.id+"\\x27,\\x27descartado\\x27)\\">descartar</button></div></div>";}).join("");',
+'  var acc=(p.aceptados||[]).map(function(e){return "<div class=\\"tline\\"><div style=\\"flex:1\\">✅ <span class=\\"muted\\">"+h(e.insight)+"</span></div><button class=\\"btn sm\\" onclick=\\"doPE(\\x27"+e.id+"\\x27,\\x27descartado\\x27)\\">quitar</button></div>";}).join("");',
+'  var ficha=p.ficha?("<details style=\\"margin-top:8px\\"><summary class=\\"muted\\" style=\\"cursor:pointer\\">ver ficha (RH)</summary><pre style=\\"white-space:pre-wrap;font-size:11px;color:#52525b;max-height:220px;overflow:auto;border:1px solid var(--bd);border-radius:8px;padding:8px;margin-top:6px\\">"+h(p.ficha)+"</pre></details>"):"";',
+'  return "<div class=\\"card\\"><h2 style=\\"text-transform:none;letter-spacing:0;font-size:14px;color:var(--tx)\\">"+h(p.nombre)+" <span class=\\"muted\\">· "+h(p.rol)+"</span></h2>"+',
+'   "<label>Lo que Horacio recuerda de ella (curado)</label><textarea id=\\"apr_"+p.id+"\\" placeholder=\\"escribe aquí el resumen que Horacio usará…\\" style=\\"width:100%;min-height:54px;font:inherit;font-size:13px;padding:8px;border:1px solid var(--bd);border-radius:9px\\">"+h(p.aprendido||"")+"</textarea><div style=\\"margin:8px 0\\"><button class=\\"btn sm primary\\" onclick=\\"doApr(\\x27"+p.id+"\\x27)\\">Guardar</button></div>"+',
+'   (sug?("<div class=\\"muted\\" style=\\"margin-top:6px\\">Sugeridos por revisar</div>"+sug):"")+(acc?("<div class=\\"muted\\" style=\\"margin-top:10px\\">Aceptados (Horacio los usa)</div>"+acc):"")+ficha+"</div>";}',
+'async function doPE(id,estado){var d=await post({action:"perfil_estado",ev_id:id,estado:estado});if(d.ok){tj(estado=="aceptado"?"Aceptado ✓":"Hecho ✓");renderPerfiles(document.getElementById("view"));}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
+'async function doApr(pid){var t=document.getElementById("apr_"+pid).value;var d=await post({action:"perfil_aprendido",persona_id:pid,aprendido:t});if(d.ok){tj("Guardado ✓");}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
 'try{setWho();if(S){load();}else{showLogin();}setInterval(function(){if(S)load();},30000);}catch(e){document.getElementById("sub").textContent="error al iniciar: "+e.message;}',
 '</script></body></html>'
 ].join('');
