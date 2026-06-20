@@ -67,7 +67,7 @@ for f in sorted(glob.glob(os.path.join(HERE, '..', 'Organigrama', '02_Contactos'
            f"ON CONFLICT(persona_id) DO UPDATE SET seed=EXCLUDED.seed, sensible=true, actualizado_ts=now()")
         imported += 1
 # Overrides explícitos confirmados por el Director: persona ← MD (puede estar en 08_Operadores)
-OVERRIDES = {'Rocío (Chío)': 'Rocío Mera Cerón', 'Diana Pavón': 'Diana Yasmín Pavón Flores'}
+OVERRIDES = {'Rocío (Chío)': 'Rocío Mera Cerón', 'Diana Pavón': 'Diana Yasmín Pavón Flores', 'Charly': 'Juan Carlos Martínez'}
 for pnombre, mdname in OVERRIDES.items():
     key = norm(pnombre)
     if key not in pmap:
