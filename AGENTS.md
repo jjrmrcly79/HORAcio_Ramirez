@@ -461,15 +461,16 @@ mejor. Decisión: la IA **sugiere**, **RH valida** (red de seguridad).
   ⚠️ **`Organigrama/` en `.gitignore`** (ADKAR + demografía) — NUNCA al repo público; los
   datos viven en disco (import) y en Supabase self-hosted (RLS, service_role).
 - **✅ Pantalla de revisión RH (2026-06-19):** pestaña **"Perfiles"** en el Panel, visible
-  solo si `es_admin` **o** `rol='rh'` (`puedePerfiles(S)`; `getSession` ahora trae `rol`).
+  **SOLO a `rol='rh'`** (`puedePerfiles(S)= S.rol==='rh'`; `getSession` trae `rol`). Decisión
+  del Director: ni los admins del panel (Daniel/Jorge) la ven — es exclusiva de RH.
   Lee `data=perfiles` (por persona: `aprendido` editable, `sugeridos` con **aceptar/descartar**,
   `aceptados`, y la **ficha** del seed colapsable). Acciones gated: `perfil_estado`
   (sugerido→aceptado/descartado) · `perfil_aprendido` (cura el texto). **Cierra el círculo:**
   plática→`sugerido`→RH acepta/cura→`perfilCtx` (aprendido + aceptados) personaliza la próxima
   plática. Probado e2e (leer/aceptar/curar/gating). Fuente: `n8n/horacio-panel.code.js`.
   > Para que **Ivonne (RH)** use la pestaña: registrarla (`/start → 🤝 RH`) y darle **PIN**
-  > (un admin en "Personas / PIN"). Hoy también la ven los admins del panel (Daniel/Jorge);
-  > si se quiere RH-only, restringir `puedePerfiles` a `rol==='rh'`.
+  > (un admin en "Personas / PIN"). Como es RH-only, **nadie** ve Perfiles hasta que Ivonne (u
+  > otra persona `rol='rh'`) esté registrada con PIN.
 
 ### 🔌 Encendido — ✅ YA ENCENDIDO (piloto en vivo)
 Scheduler ACTIVO y equipo dado de alta (ver snapshot arriba). Lo que queda como

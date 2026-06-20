@@ -44,8 +44,8 @@ const getSession = async (t) => {
   const r = await pg(`SELECT s.persona_id, s.es_admin, s.nombre, p.rol FROM horacio.panel_sesiones s JOIN horacio.personas p ON p.id=s.persona_id WHERE s.token='${esc(t)}' AND s.expira>now() LIMIT 1`);
   return r.length ? r[0] : null;
 };
-// quién puede ver/curar perfiles: admin del panel o RH (datos sensibles)
-const puedePerfiles = (S) => !!(S && (S.es_admin || S.rol === 'rh'));
+// quién puede ver/curar perfiles: SOLO RH (datos sensibles — decisión del Director)
+const puedePerfiles = (S) => !!(S && S.rol === 'rh');
 const newSession = async (pid, nombre, esAdmin) => {
   const tk = (await pg(`SELECT encode(gen_random_bytes(24),'hex') AS t`))[0].t;
   await pg(`INSERT INTO horacio.panel_sesiones(token,persona_id,nombre,es_admin,expira) VALUES('${tk}','${esc(pid)}','${esc(nombre)}',${esAdmin ? 'true' : 'false'},now()+interval '12 hours')`);
@@ -105,14 +105,14 @@ if (isPost) {
       return J({ ok: true });
     }
     if (act === 'perfil_estado') { // aceptar / descartar un aprendizaje sugerido
-      if (!puedePerfiles(S)) return J({ ok: false, error: 'Solo RH o un admin.' });
+      if (!puedePerfiles(S)) return J({ ok: false, error: 'Solo Recursos Humanos.' });
       const eid = String(body.ev_id || ''), estado = (body.estado === 'aceptado') ? 'aceptado' : (body.estado === 'descartado') ? 'descartado' : (body.estado === 'sugerido' ? 'sugerido' : null);
       if (!eid || !estado) return J({ ok: false, error: 'Datos inválidos.' });
       await pg(`UPDATE horacio.perfil_eventos SET estado='${estado}' WHERE id='${esc(eid)}'`);
       return J({ ok: true });
     }
     if (act === 'perfil_aprendido') { // curar el resumen que Horacio usa
-      if (!puedePerfiles(S)) return J({ ok: false, error: 'Solo RH o un admin.' });
+      if (!puedePerfiles(S)) return J({ ok: false, error: 'Solo Recursos Humanos.' });
       const pid = String(body.persona_id || ''), txt = String(body.aprendido == null ? '' : body.aprendido).slice(0, 800);
       const pr = await pg(`SELECT 1 FROM horacio.personas WHERE id='${esc(pid)}'`);
       if (!pr.length) return J({ ok: false, error: 'Persona no existe.' });
@@ -201,7 +201,7 @@ if (q.data === 'who') {
 if (q.data === 'perfiles') {
   const S = await getSession(q.s);
   if (!S) return J({ ok: false, code: 'auth' });
-  if (!puedePerfiles(S)) return J({ ok: false, error: 'Solo RH o un admin puede ver perfiles.' });
+  if (!puedePerfiles(S)) return J({ ok: false, error: 'Solo Recursos Humanos puede ver perfiles.' });
   const ps = await pg("SELECT p.id, p.nombre, p.rol, pf.aprendido, (pf.seed->>'texto') AS ficha FROM horacio.personas p LEFT JOIN horacio.perfiles pf ON pf.persona_id=p.id WHERE p.activa AND p.chat_id IS NOT NULL ORDER BY (p.rol='lider') DESC, p.nombre");
   const ev = await pg("SELECT id, persona_id, insight, mood, estado, fecha::text AS fecha FROM horacio.perfil_eventos WHERE estado IN ('sugerido','aceptado') ORDER BY ts DESC");
   const byP = {};
