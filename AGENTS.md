@@ -451,10 +451,13 @@ mejor. Decisión: la IA **sugiere**, **RH valida** (red de seguridad).
 - Probado e2e: plática → insight `sugerido` correcto + perfil creado.
 - **Import de MD (2026-06-19):** `scripts/import_perfiles.py` parsea
   `Organigrama/02_Contactos/*.md` y carga la ficha a `perfiles.seed` (jsonb, `sensible=true`)
-  para las personas que **ya existen** en `personas`. **12 perfiles del bot** = 10 contactos
-  + 2 overrides confirmados (Rocío (Chío) ← *Rocío Mera Cerón*; Diana Pavón ← *Diana Yasmín
-  Pavón Flores*, en `08_Operadores`). `aprendido` **vacío** → la ficha (ADKAR/hallazgos) **NO
-  viaja al prompt**; RH la cura. Falta seed de **Charly** (mantto, sin confirmar qué MD es).
+  para las personas que **ya existen** en `personas`. **13 perfiles del bot** = 10 contactos
+  + overrides (Rocío (Chío) ← *Rocío Mera Cerón*; Diana Pavón ← *Diana Yasmín Pavón Flores*).
+  `aprendido` **vacío** → la ficha (ADKAR/hallazgos) **NO viaja al prompt**; RH la cura.
+  **Charly = Juan Carlos Martínez** (mismo señor): se **consolidaron** las 2 personas de
+  mantenimiento → quedó **una activa** "Juan Carlos Martínez" (chat …1048, con perfil); la
+  otra (chat …2963, 0 escalaciones) quedó **inactiva** ("… (dup inactivo)"). Así la escalación
+  de mantenimiento es **única** (antes `LIMIT 1` sin orden podía caer en el chat equivocado).
 - **Padrón de RH (sql/023):** `horacio.personal` (tabla aparte, NO liga al bot) con las
   **72 operadoras** de `08_Operadores/` (`scripts/import_padron.py`, idempotente por archivo,
   `sensible=true`). No alimenta a Horacio (las operadoras no usan el bot); es base de RH.
