@@ -66,4 +66,23 @@ for f in sorted(glob.glob(os.path.join(HERE, '..', 'Organigrama', '02_Contactos'
         pg(f"INSERT INTO horacio.perfiles(persona_id,seed,sensible) VALUES('{p['id']}','{seed_json}'::jsonb,true) "
            f"ON CONFLICT(persona_id) DO UPDATE SET seed=EXCLUDED.seed, sensible=true, actualizado_ts=now()")
         imported += 1
+# Overrides explícitos confirmados por el Director: persona ← MD (puede estar en 08_Operadores)
+OVERRIDES = {'Rocío (Chío)': 'Rocío Mera Cerón', 'Diana Pavón': 'Diana Yasmín Pavón Flores'}
+for pnombre, mdname in OVERRIDES.items():
+    key = norm(pnombre)
+    if key not in pmap:
+        continue
+    p = [x for x in pmap[key] if '(resumen)' not in x['nombre']][0]
+    cand = glob.glob(os.path.join(HERE, '..', 'Organigrama', '*', mdname + '.md'))
+    if not cand:
+        print(f"  ⚠️ override sin archivo: {mdname}.md"); continue
+    text = open(cand[0], encoding='utf-8').read()
+    parsed = parse_md(text)
+    seed = {'archivo': mdname, 'tags': parsed['tags'], 'campos': parsed['campos'], 'texto': text[:12000]}
+    print(f"  {'(dry) ' if DRY else ''}→ {p['nombre']:24s} ← {mdname}.md  (override)")
+    if not DRY:
+        pg(f"INSERT INTO horacio.perfiles(persona_id,seed,sensible) VALUES('{p['id']}','{esc(json.dumps(seed, ensure_ascii=False))}'::jsonb,true) "
+           f"ON CONFLICT(persona_id) DO UPDATE SET seed=EXCLUDED.seed, sensible=true, actualizado_ts=now()")
+        imported += 1
+
 print(f"\n{'DRY-RUN (nada escrito)' if DRY else 'Importados'}: {imported}")
