@@ -1,0 +1,252 @@
+{
+  "communities": {
+    "0": [
+      "n8n_horacio_dash_code",
+      "n8n_horacio_dash_code_arealeader",
+      "n8n_horacio_dash_code_areas",
+      "n8n_horacio_dash_code_buildpareto",
+      "n8n_horacio_dash_code_conmeta",
+      "n8n_horacio_dash_code_embarques",
+      "n8n_horacio_dash_code_escal",
+      "n8n_horacio_dash_code_expectedslots",
+      "n8n_horacio_dash_code_fecha",
+      "n8n_horacio_dash_code_friendly",
+      "n8n_horacio_dash_code_grpname",
+      "n8n_horacio_dash_code_horanum",
+      "n8n_horacio_dash_code_lideres",
+      "n8n_horacio_dash_code_minnum",
+      "n8n_horacio_dash_code_now",
+      "n8n_horacio_dash_code_nowms",
+      "n8n_horacio_dash_code_nowmx",
+      "n8n_horacio_dash_code_payload",
+      "n8n_horacio_dash_code_pg",
+      "n8n_horacio_dash_code_pgh",
+      "n8n_horacio_dash_code_porhora",
+      "n8n_horacio_dash_code_semana",
+      "n8n_horacio_dash_code_sumplan",
+      "n8n_horacio_dash_code_sumreal",
+      "n8n_horacio_dash_code_tableros"
+    ],
+    "1": [
+      "n8n_horacio_panel_code",
+      "n8n_horacio_panel_code_esc",
+      "n8n_horacio_panel_code_fecha",
+      "n8n_horacio_panel_code_getsession",
+      "n8n_horacio_panel_code_ispin",
+      "n8n_horacio_panel_code_j",
+      "n8n_horacio_panel_code_newsession",
+      "n8n_horacio_panel_code_now",
+      "n8n_horacio_panel_code_nowmx",
+      "n8n_horacio_panel_code_pad2",
+      "n8n_horacio_panel_code_page",
+      "n8n_horacio_panel_code_pg",
+      "n8n_horacio_panel_code_pgh",
+      "n8n_horacio_panel_code_puedeperfiles",
+      "n8n_horacio_panel_code_roles",
+      "n8n_horacio_panel_code_slots",
+      "n8n_horacio_panel_code_winclose"
+    ],
+    "2": [
+      "n8n_horacio_bot_code_askline",
+      "n8n_horacio_bot_code_boardsbypid",
+      "n8n_horacio_bot_code_closeparo",
+      "n8n_horacio_bot_code_esc",
+      "n8n_horacio_bot_code_ordenmenu",
+      "n8n_horacio_bot_code_perfilctx",
+      "n8n_horacio_bot_code_pg",
+      "n8n_horacio_bot_code_readsess",
+      "n8n_horacio_bot_code_setsess",
+      "n8n_horacio_bot_code_startflowwithboard",
+      "n8n_horacio_bot_code_tjpickmenu"
+    ],
+    "3": [
+      "n8n_horacio_bot_code",
+      "n8n_horacio_bot_code_askhoracio",
+      "n8n_horacio_bot_code_guardarinsight",
+      "n8n_horacio_bot_code_nowmx",
+      "n8n_horacio_bot_code_open",
+      "n8n_horacio_bot_code_pad2",
+      "n8n_horacio_bot_code_pgh",
+      "n8n_horacio_bot_code_resumirinsight",
+      "n8n_horacio_bot_code_winclose"
+    ],
+    "4": [
+      "n8n_horacio_bot_code_askarea",
+      "n8n_horacio_bot_code_escalarrh",
+      "n8n_horacio_bot_code_hxhboardmenu",
+      "n8n_horacio_bot_code_menu",
+      "n8n_horacio_bot_code_motivar",
+      "n8n_horacio_bot_code_rmkb",
+      "n8n_horacio_bot_code_tg",
+      "n8n_horacio_bot_code_tgraw",
+      "n8n_horacio_bot_code_whois"
+    ],
+    "5": [
+      "agents_md_horacio",
+      "claude_md_horacio",
+      "horacio_catalogo_causas_de_paro_md_horacio",
+      "horacio_catalogo_lineas_y_estandares_md_horacio",
+      "horacio_escalamiento_y_slas_md_horacio",
+      "horacio_guia_de_uso_e_instructivo_md_horacio",
+      "horacio_organigrama_general_md_horacio",
+      "horacio_system_prompt_sn_04_v2_md_horacio"
+    ],
+    "6": [
+      "n8n_horacio_hxh_code",
+      "n8n_horacio_hxh_code_pg",
+      "n8n_horacio_hxh_code_pgh",
+      "n8n_horacio_hxh_code_readsess",
+      "n8n_horacio_hxh_code_setstep",
+      "n8n_horacio_hxh_code_tg"
+    ],
+    "7": [
+      "scripts_import_perfiles",
+      "scripts_import_perfiles_esc",
+      "scripts_import_perfiles_norm",
+      "scripts_import_perfiles_parse_md",
+      "scripts_import_perfiles_pg"
+    ],
+    "8": [
+      "scripts_import_padron",
+      "scripts_import_padron_esc",
+      "scripts_import_padron_parse",
+      "scripts_import_padron_pg"
+    ],
+    "9": [
+      "scripts_push_code",
+      "scripts_push_code_find_n8n",
+      "scripts_push_code_load_secrets",
+      "scripts_push_code_main"
+    ],
+    "10": [
+      "n8n_horacio_bot_code_ensureboardthen",
+      "n8n_horacio_bot_code_myboards"
+    ]
+  },
+  "cohesion": {
+    "0": 0.08666666666666667,
+    "1": 0.16176470588235295,
+    "2": 0.3090909090909091,
+    "3": 0.2777777777777778,
+    "4": 0.25,
+    "5": 0.25,
+    "6": 0.4666666666666667,
+    "7": 0.4,
+    "8": 0.5,
+    "9": 0.8333333333333334,
+    "10": 1.0
+  },
+  "gods": [
+    {
+      "id": "n8n_horacio_bot_code_pg",
+      "label": "pg()",
+      "degree": 15
+    },
+    {
+      "id": "n8n_horacio_bot_code_tg",
+      "label": "tg()",
+      "degree": 15
+    },
+    {
+      "id": "n8n_horacio_bot_code_esc",
+      "label": "esc()",
+      "degree": 9
+    },
+    {
+      "id": "n8n_horacio_bot_code_setsess",
+      "label": "setSess()",
+      "degree": 7
+    },
+    {
+      "id": "agents_md_horacio",
+      "label": "Horacio (bot HxH Mapartel \u00b7 SN-04 v2)",
+      "degree": 7
+    },
+    {
+      "id": "n8n_horacio_bot_code_startflowwithboard",
+      "label": "startFlowWithBoard()",
+      "degree": 6
+    },
+    {
+      "id": "n8n_horacio_bot_code_motivar",
+      "label": "motivar()",
+      "degree": 5
+    },
+    {
+      "id": "n8n_horacio_bot_code_closeparo",
+      "label": "closeParo()",
+      "degree": 5
+    },
+    {
+      "id": "n8n_horacio_bot_code_askline",
+      "label": "askLine()",
+      "degree": 4
+    },
+    {
+      "id": "n8n_horacio_bot_code_guardarinsight",
+      "label": "guardarInsight()",
+      "degree": 4
+    }
+  ],
+  "surprises": [
+    {
+      "source": "Horacio (bot HxH Mapartel \u00b7 SN-04 v2)",
+      "target": "Claude (IA para Horacio)",
+      "source_files": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "uses",
+      "why": "connects across different repos/directories; peripheral node `Claude (IA para Horacio)` unexpectedly reaches hub `Horacio (bot HxH Mapartel \u00b7 SN-04 v2)`"
+    },
+    {
+      "source": "Horacio (bot HxH Mapartel \u00b7 SN-04 v2)",
+      "target": "Cat\u00e1logo de Causas de Paro (Horacio)",
+      "source_files": [
+        "AGENTS.md",
+        "Horacio - Catalogo Causas de Paro.md"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories; peripheral node `Cat\u00e1logo de Causas de Paro (Horacio)` unexpectedly reaches hub `Horacio (bot HxH Mapartel \u00b7 SN-04 v2)`"
+    },
+    {
+      "source": "Horacio (bot HxH Mapartel \u00b7 SN-04 v2)",
+      "target": "Cat\u00e1logo de L\u00edneas y Est\u00e1ndares (Horacio)",
+      "source_files": [
+        "AGENTS.md",
+        "Horacio - Catalogo Lineas y Estandares.md"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories; peripheral node `Cat\u00e1logo de L\u00edneas y Est\u00e1ndares (Horacio)` unexpectedly reaches hub `Horacio (bot HxH Mapartel \u00b7 SN-04 v2)`"
+    },
+    {
+      "source": "Horacio (bot HxH Mapartel \u00b7 SN-04 v2)",
+      "target": "Escalamiento y SLAs (Horacio)",
+      "source_files": [
+        "AGENTS.md",
+        "Horacio - Escalamiento y SLAs.md"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories; peripheral node `Escalamiento y SLAs (Horacio)` unexpectedly reaches hub `Horacio (bot HxH Mapartel \u00b7 SN-04 v2)`"
+    },
+    {
+      "source": "Horacio (bot HxH Mapartel \u00b7 SN-04 v2)",
+      "target": "Gu\u00eda de Uso e Instructivo (Horacio)",
+      "source_files": [
+        "AGENTS.md",
+        "Horacio - Guia de Uso e Instructivo.md"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories; peripheral node `Gu\u00eda de Uso e Instructivo (Horacio)` unexpectedly reaches hub `Horacio (bot HxH Mapartel \u00b7 SN-04 v2)`"
+    }
+  ],
+  "tokens": {
+    "input": 31736,
+    "output": 1040
+  }
+}
