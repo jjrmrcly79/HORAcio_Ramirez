@@ -253,6 +253,29 @@ esperado 85–115%); wording "dato sospechoso". (13) **Gráfica "Cumplimiento po
 (`cSemana`/`semana`): barras por día con cumplimiento capado por proceso (`LEAST(real,meta)`
 por línea-día) + promedio de la semana — para la junta. Fuente: `horacio-dash.code.js`.
 
+**Flujo de proceso · cuello · vertientes PTH (2026-06-23):** se reemplazó la lista plana
+"Cumplimiento por tablero" por una vista de **flujo storyteller** que responde "¿dónde se
+atora?". Capas en `horacio-dash.code.js`:
+- **Flujo macro** SMT → PTH → Empaque → Embarques (chips con flecha). **Cuello = etapa con
+  más piezas perdidas** (`Σ max(0,plan−real)`) y `pct<90`; se marca en rojo "▲ CUELLO" con
+  drill-down de los 3 tableros que más arrastran (causa + "desde HH:MM" = `MIN(hora_slot)`
+  con `real<plan*0.8`). Backend: `flujo`, `cuelloDetalle` en el payload; query `tab` ahora
+  trae `primer_bajo`; cada tablero lleva `perdidas`.
+- Etapas **sin OT/estándar** muestran **producción total + "sin meta hoy"** (no "—"). Ojo:
+  `realTotal` suma TODOS los tableros de la etapa (no solo `plan>0`), si no PTH/Empaque salían
+  en 0. PTH/Empaque hoy sin estándar → no se mide cumplimiento (pendiente con Daniel).
+- Etapas **expandibles** (`▾ estaciones`, `toggleStage`); deep-link **`?open=PTH`** abre una
+  etapa al cargar (`openApplied`).
+- **PTH abierto = value stream**: 3 vertientes (líneas) en cajas (`renderRama`), marca
+  **`↓ baja`** (estación <70% de su anterior) y **`⏸ detenida/sin captura`** (real=0). Las 3
+  líneas **convergen** (corchete + "▶ CONVERGE") en el **Acabado común** FCT → Conformal PTH
+  (`convergencia:true`). Ruteo en const **`ROUTING`** (config de piso) — promover a tabla
+  `horacio.flujo_rutas` si crece. Corrección de piso (Juan): **Ola 2** no existe como estación
+  (placeholder, máquina descompuesta); **OLA_3 = "Ola 3"** real de Línea 3. `LABEL_OVERRIDE`.
+- Validación antes de deploy: envolver el archivo en `async function(){...}` para `node --check`
+  (tiene top-level await/return), y extraer el `<script>` del navegador para `node --check` aparte
+  (detecta comillas desbalanceadas dentro de las cadenas). Screenshot: Chrome headless + `?open=`.
+
 **Notas explicativas en los KPIs (2026-06-18):** cada casilla KPI es **tocable** (ícono
 ⓘ); al tocarla despliega qué mide (y `title` para hover en escritorio). Textos por KPI en
 `kpi(v,l,c,info)` → cumplimiento, tableros reportando, paros abiertos, paro acumulado,
@@ -549,7 +572,58 @@ Jorge Ramírez (dirección) — todos con `consentimiento=true`. **Scheduler ACT
 - **Fix:** `personas_rol_check` no permitía rol `'resumen'` (sql/007) → las altas de
   receptores de resumen (Pamela/Ivonne/NexIA) fallaban con 23514. Corregido.
 
-### ⏳ Siguientes (al 2026-06-16)
+### ✅ R3-HDB2 — tanda de mejoras 23-jun (sesión Daniel · "que el bot empuje el número")
+> Origen: nota Obsidian *Horacio - Propuesta Mejoras (OTs del sistema, Causas, Capacitación) 2026-06-23*
+> + minuta *2026-06-23 - Sesión Mejoras Horacio (Daniel)*. Esta tanda = los 5 quick-wins
+> de la sección "Ahora / entrega rápida". El track grande (meta desde OTs, app Plan de
+> Producción, capacitación simulada) queda para su propio plan.
+
+- **(R3-HDB2-01) Cumplimiento "fantasma" SMT=306 — diagnosticado + etiquetado.**
+  Causa raíz confirmada: el bot calcula `plan` con `COALESCE(meta_hr de /orden, estándar oficial)`
+  (`horacio-bot.code.js` línea 48). SMT_520 tiene **estándar oficial TJ000360=102/hr** sembrado,
+  así que en un día SIN `/orden` el bot pone `plan=102/h` igual → 3 h × 102 = **306**. No es
+  fantasma: es el estándar actuando como meta implícita. Los demás tableros no tienen estándar
+  (`plan=null`) → por eso solo SMT mostraba cumplimiento. **Decisión (Juan): NO suprimir** (el
+  estándar es la dirección estratégica de "meta objetiva", §1 de la propuesta), sino **etiquetar
+  la fuente** en el dashboard: cada tablero ahora dice `OT 0804 · meta 100/h` vs
+  `estándar oficial 102/h · sin OT hoy` vs `⚪ sin meta`. Fuente: `horacio-dash.code.js` (campos
+  `metaSrc`/`metaLbl`, subquery `est_oficial`).
+- **(R3-HDB2-02) Empaque de Chío — ya estaba inactivo.** Verificado: `Empaque 1–5` + `Pasta/Silicon/Resina`
+  (`activa=false`). Embarques de **Brenda** (`captura='tarjetas'`) intacto. Sin cambios necesarios.
+  → **Hallazgo gordo (R3-HDB2-09):** el abrumamiento real de Chío son **18 tableros ACTIVOS** con
+  duplicados del re-import del 19-jun: **6× FCT** (`CONF_FCT` + `FCT_1..5`), `CONF_ENS`+`Ensamble 1/2`,
+  `CONF_GRAB`+`Grabación 2/3`, `CONF_PRU`+`Prueba Funcional`. Dos generaciones de nombres mezcladas.
+  **Diferido** (no se tocó a ciegas): requiere que Daniel diga cuál set es el bueno (el Excel dice
+  FCT=1 máquina, Conformal=5 → `FCT 1–5` puede ser error de import). Ver "Siguientes".
+- **(R3-HDB2-03) Iconito de alerta de incumplimiento en el HxH.** En el dashboard, cuando un tablero
+  cae **≤70%** y tiene causa capturada, se muestra `🔻 <causa>` en rojo junto a la línea (análogo al
+  `⚠️` de sobreproducción). Reusa el `boton_texto` de `causas_paro` (ya trae el iconito ⚙️🛠️📦🔓).
+  Fuente: `horacio-dash.code.js` (subquery `causas_hoy` + campos `low`/`causasHoy`).
+- **(R3-HDB2-04) Pareto diario además del semanal.** La tarjeta del pareto ahora tiene toggle
+  **Hoy / 7 días** (default Hoy). Builder `buildPareto(desdeSql)` reutilizable; payload con
+  `paretoDia`/`topAreaDia`. Fuente: `horacio-dash.code.js` (`parMode`, `renderPareto`, `parBtn`).
+- **(R3-HDB2-06) Botón admin abrir/cerrar paros (incl. retroactivos).** Nuevo tab **"Paros"** en el
+  Panel (solo admin con PIN): lista los paros **abiertos** (cualquier fecha) marcando "hace N día(s)"
+  en rojo + cerrados recientes, con botón **Cerrar/Reabrir**. Acción POST `paro_estado` (gated
+  `S.es_admin`). **Anti-inflado:** cerrar un paro de día previo deja `duracion_min=NULL` (no
+  contamina reacción/paro-acumulado); solo los de HOY calculan duración real. Caso real resuelto:
+  2 paros abiertos desde el 19-jun (Ola 3, Soldeo Manual 3). Fuente: `horacio-panel.code.js`
+  (acción `paro_estado`, query `paros` en `data=1`, `renderParos`/`doParo`).
+
+> **Validación:** ambas capas de `horacio-dash.code.js` y `horacio-panel.code.js` pasan `node --check`
+> (Layer-1 Node + Layer-2 script del navegador reconstruido). Todas las queries nuevas probadas
+> contra la BD real vía `/pg/query`. **Deploy pendiente** (Daniel/Director): `dash` `ng4loQv932n2AIRC`
+> y `panel` `4sJAO9urzrgQowJB`. El bot NO se tocó.
+
+### ⏳ Siguientes (al 2026-06-23)
+- [ ] **(R3-HDB2-09) Dedupe tableros de Chío:** 18 activos con duplicados (FCT/Ensamble/Grabación)
+  del re-import 19-jun. Definir con Daniel cuál set conservar + fijar tope por líder (~4–6).
+- [ ] **(R3-HDB2-05) Refinar causas:** agregar "liberación de máquina" (Calidad), englobar, acotar
+  "Otra cosa" a lo extraordinario. Confirmar con líderes (Yadira SMT tiene causas distintas).
+- [ ] **Track grande (proyecto aparte):** R3-HDB2-07 meta desde OTs del sistema · R3-HDB2-11 app
+  Plan de Producción (avance % por OT) · R3-HDB2-13 estándar oficial en `horacio.estandares`
+  (Std_Actual.xlsx: 1,083 estándares) + planificador con escenarios · R3-HDB2-08 capacitación
+  simulada · R3-HDB2-12 puente tarjeta↔OT. Ya hay datos: Excel de Daniel + export `090626 OT PROCESO.txt`.
 - [ ] **Relevo Yadira→Gabriela** (vacaciones): reasignar sus 5 tableros a "Gabriela".
 - [x] Alta de **Brenda** (Embarques) ✅ — falta **Pamela/Ivonne/NexIA** (resumen).
 - [ ] (Opcional) Dashboard: desglose de Embarques **por tarjeta/NP** del día.

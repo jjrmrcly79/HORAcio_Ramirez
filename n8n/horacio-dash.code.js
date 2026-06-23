@@ -49,6 +49,34 @@ if (q.data !== '1') {
 '.pill{padding:2px 9px;border-radius:99px;font-size:11px;font-weight:600;color:#fff}',
 '.t-Paro{background:#dc2626}.t-Faltante{background:#d97706}.t-Calidad{background:#7c3aed}',
 '.empty{color:var(--mut);font-size:13px;padding:10px 0}',
+'.flow{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;margin-bottom:6px}',
+'.stage{flex:1 1 130px;min-width:128px;background:#fafafa;border:1px solid var(--bd);border-radius:14px;padding:12px 14px}',
+'.stage.cuello{border-color:var(--bad);background:#fef2f2;box-shadow:0 0 0 1px var(--bad) inset}',
+'.stage .sname{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);font-weight:600}',
+'.stage .spct{font-size:25px;font-weight:680;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:2px}.stage .spct small{font-size:13px;font-weight:500;color:var(--mut)}',
+'.stage .smeta{font-size:11.5px;color:var(--mut);margin-top:3px}',
+'.stage .slost{font-size:12.5px;font-weight:600;margin-top:5px}',
+'.stage .flag{display:inline-block;margin-top:7px;font-size:11px;font-weight:700;color:var(--bad)}',
+'.stage.clk{cursor:pointer;transition:border-color .15s}.stage.clk:hover{border-color:#d8d2ea}',
+'.stage .exp{margin-top:8px;font-size:10.5px;color:var(--accent);font-weight:600}',
+'.arrow{display:flex;align-items:center;color:#c4c4c8;font-size:18px;flex:0 0 auto}',
+'@media(max-width:680px){.arrow{display:none}.stage{flex:1 1 44%}}',
+'.cuellobox{margin-top:12px;padding-top:12px;border-top:1px solid var(--bd)}',
+'.rama{margin-top:12px}.rama .rn{font-size:11px;font-weight:600;color:var(--tx);margin-bottom:6px}',
+'.subflow{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}',
+'.sub{min-width:94px;background:#fafafa;border:1px solid var(--bd);border-radius:11px;padding:8px 11px}',
+'.sub.stop{border-color:var(--bad);background:#fef2f2}.sub.drop{border-color:var(--warn);background:#fffbeb}',
+'.sub .sl{font-size:10.5px;color:var(--mut);font-weight:600}',
+'.sub .sv{font-size:18px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-.01em}',
+'.sub .sx{font-size:10px;color:var(--mut);margin-top:1px}.sub.stop .sx{color:var(--bad);font-weight:600}.sub.drop .sx{color:var(--warn);font-weight:600}',
+'.suba{display:flex;align-items:center;color:#c4c4c8;font-size:14px}',
+'.ramasconv{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}',
+'.ramasleft{flex:1 1 480px;min-width:260px;display:flex;flex-direction:column;gap:10px}',
+'.ramasleft .rama{margin-top:0}',
+'.brace{align-self:stretch;width:12px;border:2px solid #e0ddec;border-left:0;border-radius:0 12px 12px 0;margin:6px 0}',
+'.ramasmerge{display:flex;flex-direction:column;align-items:center;color:var(--mut);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}.ramasmerge .mk{font-size:22px;color:#bcb4d8;line-height:1;margin-bottom:2px}',
+'.ramasright{flex:0 1 auto}.ramasright .rama{margin-top:0}',
+'@media(max-width:680px){.brace{display:none}.ramasmerge{flex-direction:row;gap:5px}.ramasleft{flex:1 1 100%}.ramasright{flex:1 1 100%}}',
 '.embk{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:14px}.embk .v{font-size:23px;font-weight:680;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.embk .v small{font-size:13px;color:var(--mut);font-weight:500;margin-left:3px}.embk .l{color:var(--mut);font-size:12px;margin-top:2px}',
 '.foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;color:var(--mut);font-size:12px;flex-wrap:wrap}',
 '.foot .pw{display:flex;align-items:center;gap:6px;color:#52525b}.foot .pw b{color:var(--accent);font-weight:700}',
@@ -57,7 +85,8 @@ if (q.data !== '1') {
 '<div class="wrap">',
 '<div class="kpis" id="kpis"></div>',
 '<div id="revisar"></div>',
-'<div class="grid2"><div class="card"><h2>Cumplimiento por tablero (hoy)</h2><div id="tableros"></div></div>',
+'<div class="card"><h2>Flujo de hoy — ¿dónde se atora?</h2><div id="flujo"><div class="empty">cargando…</div></div><div id="cuello"></div><div id="stageDetail"></div></div>',
+'<div class="grid2"><div class="card"><h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px">Cumplimiento por tablero (hoy) <span id="tabTog" style="font-size:12px;font-weight:400;color:var(--accent);cursor:pointer;white-space:nowrap">ver todos ▾</span></h2><div id="tableros" style="display:none"></div></div>',
 '<div class="card"><h2>¿Quién está subiendo su info? (hoy)</h2><div id="hb"></div></div></div>',
 '<div class="card" id="embCard" style="display:none"><h2>📦 Embarques — tarjetas retiradas (hoy)</h2>',
 '<div class="embk" id="embKpis"></div>',
@@ -66,16 +95,65 @@ if (q.data !== '1') {
 '<div id="embEmpty"></div></div>',
 '<div class="card"><h2>Escalamientos abiertos ahora</h2><div id="esc"></div></div>',
 '<div class="grid2"><div class="card"><h2>Real vs Plan por hora (hoy)</h2><canvas id="cHora" height="160"></canvas></div>',
-'<div class="card"><h2>Pareto de causas por área (7 días)</h2><canvas id="cPar" height="160"></canvas><div id="topArea" style="margin-top:10px"></div></div></div>',
+'<div class="card"><h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px">Pareto de causas por área <span id="parTog" style="font-size:12px;font-weight:400;white-space:nowrap"></span></h2><canvas id="cPar" height="160"></canvas><div id="topArea" style="margin-top:10px"></div></div></div>',
 '<div class="card"><h2>Cumplimiento por día (7 días) — tendencia para la junta</h2><canvas id="cSemana" height="120"></canvas><div class="muted" id="semProm" style="margin-top:8px"></div></div>',
 '<div class="foot"><span>Actualiza cada 30s · sin nombres de operadoras</span><span class="pw">powered by <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="5.5" width="13" height="13" rx="3" transform="rotate(45 12 12)" fill="#7c3aed"/></svg><b>NexIA</b></span></div>',
 '</div>',
 '<script>',
 'var TK=new URLSearchParams(location.search).get("token");',
 'var chHora=null,chPar=null,chENP=null,chEH=null,chSem=null;',
+'var flujoData=[],openStage=-1,openApplied=false;',
+'var parMode="dia",parData=null;',
 'function semColor(s){return s=="\\uD83D\\uDFE2"?"var(--ok)":s=="\\uD83D\\uDFE1"?"var(--warn)":s=="\\uD83D\\uDD34"?"var(--bad)":"#64748b"}',
 'function hhmm(t){if(!t)return"—";var d=new Date(t);if(isNaN(d))return"—";return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}',
 'function el(h){var d=document.createElement("div");d.innerHTML=h;return d.firstChild}',
+'function fmt(n){n=Number(n)||0;return n.toLocaleString("es-MX")}',
+'function renderFlujo(d){var f=d.flujo||[];flujoData=f;var html="";',
+'  if(!openApplied){openApplied=true;var wo=new URLSearchParams(location.search).get("open");if(wo){for(var j=0;j<f.length;j++){if((f[j].grupo||"").toLowerCase()===wo.toLowerCase()||(f[j].etapa||"").toLowerCase()===wo.toLowerCase()){openStage=j;break;}}}}',
+'  f.forEach(function(s,i){if(i>0)html+="<span class=\\"arrow\\">\\u25B6</span>";',
+'    var clk=!!(s.estaciones&&s.estaciones.length);var cls="stage"+(s.cuello?" cuello":"")+(clk?" clk":"");',
+'    var col=s.pct==null?"":(s.pct>=95?"var(--ok)":s.pct>=80?"var(--warn)":"var(--bad)");',
+'    var val=s.pct!=null?(s.pct+"%"):(s.tarjetas!=null?fmt(s.tarjetas)+" <small>tarj</small>":(s.realTotal>0?fmt(s.realTotal)+" <small>pz</small>":"\\u2014"));',
+'    var sinMeta=s.pct==null&&s.tarjetas==null&&s.realTotal>0;',
+'    var meta=s.pct!=null?(fmt(s.real)+"/"+fmt(s.plan)+" \\u00B7 "+s.lider):((sinMeta?"sin meta hoy \\u00B7 ":"")+(s.lider||"&nbsp;"));',
+'    var lost=s.perdidas>0?"<div class=\\"slost\\" style=\\"color:var(--bad)\\">\\u2212"+fmt(s.perdidas)+" pz</div>":(s.pct!=null?"<div class=\\"slost\\" style=\\"color:var(--ok)\\">al plan \\u2713</div>":"");',
+'    html+="<div class=\\""+cls+"\\""+(clk?" onclick=\\"toggleStage("+i+")\\"":"")+"><div class=\\"sname\\">"+s.etapa+"</div><div class=\\"spct\\""+(col?" style=\\"color:"+col+"\\"":"")+">"+val+"</div><div class=\\"smeta\\">"+meta+"</div>"+lost+(s.cuello?"<div class=\\"flag\\">\\u25B2 CUELLO</div>":"")+(clk?"<div class=\\"exp\\">\\u25BE estaciones</div>":"")+"</div>";',
+'  });',
+'  document.getElementById("flujo").innerHTML="<div class=\\"flow\\">"+html+"</div>";',
+'  renderStageDetail();',
+'  var c=d.cuelloDetalle;var box=document.getElementById("cuello");',
+'  if(!c||!c.boards||!c.boards.length){box.innerHTML="<div class=\\"cuellobox\\"><div class=\\"muted\\">El flujo va al plan hoy \\u2014 sin cuello marcado \\uD83C\\uDF89</div></div>";return;}',
+'  var rows=c.boards.map(function(b){return "<div class=\\"tab\\"><div>"+b.sem+" <b>"+b.nombre+"</b><div class=\\"muted\\">"+(b.causa||"\\u2014 sin causa reportada")+(b.desde?" \\u00B7 desde "+b.desde:"")+"</div></div><div class=\\"num\\" style=\\"text-align:right\\">"+(b.pct==null?"\\u2014":b.pct+"%")+"<div class=\\"muted\\" style=\\"font-weight:400;color:var(--bad)\\">\\u2212"+fmt(b.perdidas)+" pz</div></div></div>";}).join("");',
+'  box.innerHTML="<div class=\\"cuellobox\\"><div class=\\"muted\\" style=\\"margin-bottom:6px\\"><b style=\\"color:var(--bad)\\">"+c.etapa+"</b> es el cuello hoy ("+fmt(c.perdidas)+" pz perdidas) \\u2014 los que m\\u00E1s arrastran:</div>"+rows+"</div>";',
+'}',
+'function renderEstaciones(s){if(!s.estaciones||!s.estaciones.length)return "<div class=\\"muted\\">Sin estaciones</div>";',
+'  return s.estaciones.map(function(e){',
+'    var u=e.unidad==="tarjetas"?"tarj":"pz";',
+'    var right=e.pct!=null?(e.pct+"% \\u00B7 "+fmt(e.real)+"/"+fmt(e.plan)):(fmt(e.real)+" "+u);',
+'    var lost=e.perdidas>0?"<div class=\\"muted\\" style=\\"font-weight:400;color:var(--bad)\\">\\u2212"+fmt(e.perdidas)+" pz</div>":"";',
+'    var sub=(e.pct==null?"sin meta \\u00B7 ":"")+"hora "+(e.ultima||"\\u2014")+(e.sd?" \\u00B7 "+e.sd+" sin dato":"")+(e.causa?" \\u00B7 "+e.causa:"");',
+'    return "<div class=\\"tab\\"><div>"+e.sem+" <b>"+e.nombre+"</b><div class=\\"muted\\">"+sub+"</div></div><div class=\\"num\\" style=\\"text-align:right\\">"+right+lost+"</div></div>";',
+'  }).join("");}',
+'function renderRama(b){var chips="";',
+'  b.estaciones.forEach(function(e,i){if(i>0)chips+="<span class=\\"suba\\">\\u25B6</span>";',
+'    var prev=i>0?b.estaciones[i-1]:null;var stop=(e.real===0);',
+'    var drop=(!stop&&prev&&prev.real>0&&e.real>0&&e.real<prev.real*0.7);',
+'    var cls="sub"+(stop?" stop":(drop?" drop":""));',
+'    var x=stop?(e.sd?"\\u23F8 sin captura":"\\u23F8 detenida"):(drop?"\\u2193 baja vs anterior":(e.causa?e.causa:(e.ultima?("hora "+e.ultima):"\\u2014")));',
+'    chips+="<div class=\\""+cls+"\\"><div class=\\"sl\\">"+e.nombre+"</div><div class=\\"sv\\">"+fmt(e.real)+"</div><div class=\\"sx\\">"+x+"</div></div>";',
+'  });',
+'  return "<div class=\\"rama\\"><div class=\\"rn\\">"+b.nombre+"</div><div class=\\"subflow\\">"+chips+"</div></div>";}',
+'function renderRamas(s){if(!s.ramas||!s.ramas.length)return renderEstaciones(s);',
+'  var ac=null,lineas=[];s.ramas.forEach(function(b){if(b.convergencia)ac=b;else lineas.push(b);});',
+'  var left=lineas.map(renderRama).join("");',
+'  if(!ac)return left;',
+'  return "<div class=\\"ramasconv\\"><div class=\\"ramasleft\\">"+left+"</div><div class=\\"brace\\"></div><div class=\\"ramasmerge\\"><div class=\\"mk\\">\\u25B6</div><div>converge</div></div><div class=\\"ramasright\\">"+renderRama(ac)+"</div></div>";}',
+'function renderStageDetail(){var box=document.getElementById("stageDetail");if(!box)return;',
+'  if(openStage<0||!flujoData[openStage]){box.innerHTML="";return;}',
+'  var s=flujoData[openStage];var note=(s.pct==null&&s.realTotal>0)?" (sin meta hoy \\u2014 volumen)":"";',
+'  var lbl=(s.ramas&&s.ramas.length)?"vertientes (l\\u00EDneas paralelas) \\u2014 piezas por estaci\\u00F3n":"estaciones en orden de proceso";',
+'  box.innerHTML="<div class=\\"cuellobox\\"><div class=\\"muted\\" style=\\"margin-bottom:6px\\"><b>"+s.etapa+"</b> \\u2014 "+lbl+note+":</div>"+renderRamas(s)+"</div>";}',
+'function toggleStage(i){openStage=(openStage===i?-1:i);renderStageDetail();}',
 'async function load(){',
 '  try{',
 '    var r=await fetch(location.pathname+"?token="+encodeURIComponent(TK||"")+"&data=1",{cache:"no-store"});',
@@ -94,8 +172,9 @@ if (q.data !== '1') {
 '      kpi(k.calAbiertos,"Calidad abierta",k.calAbiertos>0?"var(--bad)":"","Reportes de calidad que siguen sin cerrarse.")+',
 '      kpi((k.reaccionMin==null?"—":k.reaccionMin+" min"),"Tiempo de reacción (7d)",(k.reaccionMin==null?"":(k.reaccionMin<=15?"var(--ok)":k.reaccionMin<=30?"var(--warn)":"var(--bad)")),"Minutos promedio que tarda un paro desde que se marca hasta que se cierra (‘✅ Ya quedó’), en los últimos 7 días. Es el tiempo de reacción del andón. Meta: 10–15 min. Solo cuenta paros ya cerrados.");',
 '    var ht="";d.tableros.forEach(function(t){var p=t.pct==null?(t.real+" "+(t.unidad||"pzs")):(t.real+"/"+t.plan+" "+t.pct+"%"+(t.over?" ⚠️":""));',
-'      ht+="<div class=\\"tab\\"><div>"+t.sem+" <b>"+t.nombre+"</b><div class=\\"muted\\">"+(t.ot?("OT "+t.ot+(t.modelo?" · "+t.modelo:"")+(t.meta!=null?" · meta "+t.meta+"/h":"")+" · "):"")+t.grupo+" · hora reportada "+(t.ultima||"—")+(t.sd?" · "+t.sd+" sin dato":"")+(t.over?" · ⚠️ reportó "+t.pctRaw+"% — revisar meta/captura":"")+"</div></div><div class=\\"num\\" style=\\"text-align:right\\">"+p+"</div></div>"});',
+'      ht+="<div class=\\"tab\\"><div>"+t.sem+" <b>"+t.nombre+"</b><div class=\\"muted\\">"+(t.metaLbl||"")+" · "+t.grupo+" · hora reportada "+(t.ultima||"—")+(t.sd?" · "+t.sd+" sin dato":"")+(t.over?" · ⚠️ reportó "+t.pctRaw+"% — revisar meta/captura":"")+(t.low&&t.causasHoy&&t.causasHoy.length?(" · <span style=\\"color:var(--bad)\\">🔻 "+t.causasHoy.join(" · ")+"</span>"):"")+"</div></div><div class=\\"num\\" style=\\"text-align:right\\">"+p+"</div></div>"});',
 '    document.getElementById("tableros").innerHTML=ht||"<div class=\\"empty\\">Sin datos hoy</div>";',
+'    try{renderFlujo(d)}catch(fe){document.getElementById("flujo").innerHTML="<div class=\\"empty\\">flujo no cargó</div>"}',
 '    var rev=d.revisar||[];document.getElementById("revisar").innerHTML=rev.length?("<div class=\\"revbox\\"><b>⚠️ "+rev.length+" tablero(s) con dato sospechoso</b> (&gt;115%, fuera del rango esperado 85–115%) — revisar meta o captura: "+rev.map(function(x){return x.nombre+" ("+x.pctRaw+"%)";}).join(" · ")+". El número final ya cuenta cada proceso máx. 100%.</div>"):"";',
 '    var hh="";d.lideres.forEach(function(l){var pc=l.pct==null?0:l.pct;var c=pc>=80?"var(--ok)":pc>=50?"var(--warn)":"var(--bad)";',
 '      hh+="<div class=\\"tab\\"><div><b>"+l.nombre+"</b><div class=\\"bar\\"><i style=\\"width:"+Math.min(pc,100)+"%;background:"+c+"\\"></i></div></div><div class=\\"num\\" style=\\"text-align:right\\">"+l.reportados+"/"+l.esperados+"<div class=\\"muted\\" style=\\"font-weight:400\\">captura "+(l.ultima||"—")+"</div></div></div>"});',
@@ -103,14 +182,19 @@ if (q.data !== '1') {
 '    if(d.escalamientos.length){var et="<table><tr><th>Tipo</th><th>Tablero</th><th>Detalle</th><th>A</th><th>Hace</th><th>Acuse</th></tr>";',
 '      d.escalamientos.forEach(function(e){et+="<tr><td><span class=\\"pill t-"+e.tipo+"\\">"+e.tipo+"</span></td><td>"+e.tablero+"</td><td>"+(e.detalle||"")+"</td><td>"+(e.quien||"—")+"</td><td>"+e.haceMin+" min</td><td>"+(e.acuse?"✅":"⏳")+"</td></tr>"});',
 '      et+="</table>";document.getElementById("esc").innerHTML=et;}else{document.getElementById("esc").innerHTML="<div class=\\"empty\\">Nada escalado abierto 🎉</div>"}',
-'    try{drawHora(d.porHora);drawPar(d.pareto);drawSemana(d.semana||[]);}catch(ce){document.getElementById("sub").textContent+=" · (graficas no cargaron)"}',
-'    var ta="<table><tr><th>Área</th><th>Causa #1</th><th>Veces</th></tr>";d.topArea.forEach(function(t){ta+="<tr><td><b>"+t.area+"</b> <span class=\\"muted\\">"+t.lider+"</span></td><td>"+(t.causa||"— sin causas —")+"</td><td>"+(t.n||0)+"</td></tr>"});ta+="</table>";document.getElementById("topArea").innerHTML=ta;',
+'    try{drawHora(d.porHora);parData=d;renderPareto();drawSemana(d.semana||[]);}catch(ce){document.getElementById("sub").textContent+=" · (graficas no cargaron)"}',
 '    renderEmb(d.embarques);',
 '  }catch(e){document.getElementById("sub").textContent="error: "+e.message}',
 '}',
 'function kpi(v,l,c,info){return "<div class=\\"kpi\\" onclick=\\"this.classList.toggle(\\x27open\\x27)\\" title=\\""+(info||"").replace(/\\"/g,"&quot;")+"\\"><span class=\\"q\\">i</span><div class=\\"v\\""+(c?" style=\\"color:"+c+"\\"":"")+">"+v+"</div><div class=\\"l\\">"+l+"</div>"+(info?"<div class=\\"ki\\">"+info+"</div>":"")+"</div>"}',
 'function drawHora(rows){var lb=rows.map(function(r){return r.slot});var pl=rows.map(function(r){return r.plan});var re=rows.map(function(r){return r.real});',
 '  if(chHora)chHora.destroy();chHora=new Chart(document.getElementById("cHora"),{type:"bar",data:{labels:lb,datasets:[{label:"Plan",data:pl,backgroundColor:"#d4d4d8",borderRadius:4},{label:"Real",data:re,backgroundColor:"#7c3aed",borderRadius:4}]},options:{plugins:{legend:{labels:{color:"#52525b",boxWidth:10,boxHeight:10,usePointStyle:true,pointStyle:"circle"}}},scales:{x:{grid:{display:false},border:{display:false},ticks:{color:"#71717a"}},y:{grid:{color:"#f0f0f2"},border:{display:false},ticks:{color:"#71717a"}}}}})}',
+'function setParMode(m){parMode=m;renderPareto();}',
+'function parBtn(m,l){var on=parMode===m;return "<button onclick=\\"setParMode(\x27"+m+"\x27)\\" style=\\"border:1px solid "+(on?"#7c3aed":"#d4d4d8")+";background:"+(on?"#7c3aed":"#fff")+";color:"+(on?"#fff":"#52525b")+";border-radius:6px;padding:2px 10px;margin-left:4px;cursor:pointer;font-size:12px\\">"+l+"</button>"}',
+'function renderPareto(){if(!parData)return;var P=parMode==="dia"?parData.paretoDia:parData.pareto;var TA=parMode==="dia"?parData.topAreaDia:parData.topArea;',
+'  var tg=document.getElementById("parTog");if(tg)tg.innerHTML=parBtn("dia","Hoy")+parBtn("sem","7 días");',
+'  try{drawPar(P)}catch(e){}',
+'  var ta="<table><tr><th>Área</th><th>Causa #1</th><th>Veces</th></tr>";(TA||[]).forEach(function(t){ta+="<tr><td><b>"+t.area+"</b> <span class=\\"muted\\">"+t.lider+"</span></td><td>"+(t.causa||"— sin causas —")+"</td><td>"+(t.n||0)+"</td></tr>"});ta+="</table>";document.getElementById("topArea").innerHTML=ta;}',
 'function drawPar(p){var col={SMT:"#7c3aed",PTH:"#f59e0b",CONFORMAL:"#16a34a"};',
 '  var lb=p.causas.map(function(c){return c.replace(/^[\\s\\W]+/,"")});',
 '  var ds=p.areas.map(function(a){return {label:a.label,data:p.data[a.key],backgroundColor:col[a.key]||"#9ca3af",borderRadius:3}});',
@@ -131,6 +215,7 @@ if (q.data !== '1') {
 '  var vals=rows.filter(function(r){return r.pct!=null;}).map(function(r){return r.pct;});var prom=vals.length?Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length):null;',
 '  document.getElementById("semProm").innerHTML=prom==null?"":("Promedio de la semana: <b style=\\"color:#18181b\\">"+prom+"%</b> (cada día topado a 100% por proceso)");',
 '  if(chSem)chSem.destroy();chSem=new Chart(document.getElementById("cSemana"),{type:"bar",data:{labels:lb,datasets:[{label:"Cumplimiento",data:dt,backgroundColor:cols,borderRadius:5}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false},border:{display:false},ticks:{color:"#71717a"}},y:{beginAtZero:true,suggestedMax:100,grid:{color:"#f0f0f2"},border:{display:false},ticks:{color:"#71717a",callback:function(v){return v+"%";}}}}}})}',
+'(function(){var tg=document.getElementById("tabTog");if(tg)tg.onclick=function(){var t=document.getElementById("tableros");var sh=t.style.display==="none";t.style.display=sh?"":"none";tg.textContent=sh?"ocultar \\u25B4":"ver todos \\u25BE";};})();',
 'load();setInterval(load,30000);',
 '</script></body></html>'
   ].join('');
@@ -144,14 +229,24 @@ const horaNum = Number(now.toFormat('HH'));
 const minNum = Number(now.toFormat('mm'));
 const expectedSlots = Math.max(0, Math.min(9, (horaNum - 7) + (minNum >= 30 ? 1 : 0))); // ventanas de :30 ya cerradas (6:30→7:30 …)
 
-const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, l.unidad, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::bigint AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::bigint AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta, (SELECT o.modelo FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS modelo FROM horacio.lineas l LEFT JOIN horacio.hxh_vigente h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa AND l.captura<>'tarjetas' GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
+const tab = await pg(`SELECT l.codigo, l.nombre, l.grupo, l.orden, l.unidad, COALESCE(SUM(h.plan) FILTER (WHERE NOT h.sin_dato),0)::bigint AS plan, COALESCE(SUM(h.real) FILTER (WHERE NOT h.sin_dato),0)::bigint AS real, COUNT(h.*) FILTER (WHERE h.sin_dato)::int AS sd, MAX(h.hora_slot) FILTER (WHERE NOT h.sin_dato) AS ultima, MIN(h.hora_slot) FILTER (WHERE NOT h.sin_dato AND h.plan>0 AND h.real < h.plan*0.8) AS primer_bajo, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta, (SELECT o.modelo FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS modelo, (SELECT e.piezas_hora FROM horacio.estandares e WHERE e.linea_id=l.id AND e.vigente=true ORDER BY e.created_at DESC LIMIT 1) AS est_oficial, (SELECT array_agg(DISTINCT cp2.boton_texto) FROM horacio.hxh_vigente h2 JOIN horacio.causas_paro cp2 ON cp2.codigo=h2.causa_codigo WHERE h2.linea_id=l.id AND h2.fecha='${fecha}' AND h2.causa_codigo IS NOT NULL) AS causas_hoy FROM horacio.lineas l LEFT JOIN horacio.hxh_vigente h ON h.linea_id=l.id AND h.fecha='${fecha}' WHERE l.activa AND l.captura<>'tarjetas' GROUP BY l.id, l.codigo, l.nombre, l.grupo, l.orden ORDER BY l.grupo, l.orden`);
 const tableros = tab.map((t) => {
   const plan = Number(t.plan) || 0, real = Number(t.real) || 0;
   const pctRaw = plan > 0 ? Math.round(real / plan * 100) : null;     // % real sin topar (puede pasar de 100)
   const pct = pctRaw == null ? null : Math.min(pctRaw, 100);           // % mostrado: topado a 100
   const over = plan > 0 && real > plan * 1.15;                         // >115% (rango esperado 85–115%) → dato sospechoso
   const sem = pct == null ? '⚪' : (pct >= 95 ? '🟢' : (pct >= 80 ? '🟡' : '🔴'));
-  return { codigo: t.codigo, nombre: t.nombre, grupo: t.grupo, unidad: t.unidad || 'pzs', plan, real, pct, pctRaw, over, sem, ultima: t.ultima || null, sd: Number(t.sd) || 0, ot: t.ot || null, meta: t.meta != null ? Number(t.meta) : null, modelo: t.modelo || null };
+  const meta = t.meta != null ? Number(t.meta) : null;
+  const estOf = t.est_oficial != null ? Number(t.est_oficial) : null;
+  // fuente de la meta: OT que cargó Daniel > estándar oficial (fallback) > sin meta
+  const metaSrc = meta != null ? 'ot' : (plan > 0 && estOf != null ? 'estandar' : 'none');
+  const metaLbl = metaSrc === 'ot'
+    ? ('OT ' + (t.ot || '?') + (t.modelo ? ' · ' + t.modelo : '') + ' · meta ' + meta + '/h')
+    : (metaSrc === 'estandar' ? ('estándar oficial ' + estOf + '/h · sin OT hoy') : '⚪ sin meta');
+  const causasHoy = Array.isArray(t.causas_hoy) ? t.causas_hoy : [];   // boton_texto ya trae el iconito (⚙️🛠️📦…)
+  const low = pct != null && pct <= 70;                                 // incumplimiento (≤70%) → mostrar causa
+  const perdidas = Math.max(0, plan - real);                            // piezas dejadas de producir vs meta (impacto real)
+  return { codigo: t.codigo, nombre: t.nombre, grupo: t.grupo, unidad: t.unidad || 'pzs', plan, real, pct, pctRaw, over, sem, ultima: t.ultima || null, primerBajo: t.primer_bajo || null, sd: Number(t.sd) || 0, ot: t.ot || null, meta: meta, modelo: t.modelo || null, estOf: estOf, metaSrc: metaSrc, metaLbl: metaLbl, low: low, perdidas: perdidas, causasHoy: causasHoy };
 });
 const conMeta = tableros.filter((t) => t.plan > 0);
 // agregado SIN contaminar: cada tablero aporta como máximo su meta → min(real, plan)
@@ -190,23 +285,29 @@ const lead = await pg("SELECT DISTINCT ON (l.grupo) l.grupo, p.nombre FROM horac
 const areaLeader = {}; lead.forEach((r) => { areaLeader[r.grupo] = r.nombre; });
 const friendly = (n) => { const m = n && n.match(/\(([^)]+)\)/); return m ? m[1] : (n ? n.split(' ')[0] : '?'); };
 const grpName = (g) => (g === 'CONFORMAL' ? 'Conformal' : g);
-// causas (paros + merma HxH) desglosadas por área
-const par = await pg(`SELECT cp.boton_texto AS causa, l.grupo AS grupo, COUNT(*)::int AS n FROM (SELECT causa_codigo, linea_id FROM horacio.paros WHERE ts_inicio::date >= '${fecha}'::date-6 AND causa_codigo IS NOT NULL UNION ALL SELECT causa_codigo, linea_id FROM horacio.hxh_vigente WHERE fecha >= '${fecha}'::date-6 AND causa_codigo IS NOT NULL) x JOIN horacio.causas_paro cp ON cp.codigo=x.causa_codigo JOIN horacio.lineas l ON l.id=x.linea_id GROUP BY cp.boton_texto, l.grupo`);
-const totals = {}, byCA = {};
-par.forEach((r) => { const n = Number(r.n) || 0; totals[r.causa] = (totals[r.causa] || 0) + n; (byCA[r.causa] = byCA[r.causa] || {})[r.grupo] = n; });
+// causas (paros + merma HxH) desglosadas por área — builder reutilizable (7 días y diario)
 const AREAS = ['SMT', 'PTH', 'CONFORMAL'];
-const causas = Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 8);
-const pareto = {
-  causas,
-  areas: AREAS.map((k) => ({ key: k, label: grpName(k) + ' - ' + friendly(areaLeader[k]) })),
-  data: AREAS.reduce((o, k) => { o[k] = causas.map((c) => (byCA[c] && byCA[c][k]) || 0); return o; }, {}),
-};
-// causa #1 por área (para la mini-tabla)
-const topArea = AREAS.map((k) => {
-  let causa = null, n = 0;
-  Object.keys(byCA).forEach((c) => { const v = byCA[c][k] || 0; if (v > n) { n = v; causa = c; } });
-  return { area: grpName(k), lider: friendly(areaLeader[k]), causa, n };
-});
+async function buildPareto(desdeSql) {
+  const rows = await pg(`SELECT cp.boton_texto AS causa, l.grupo AS grupo, COUNT(*)::int AS n FROM (SELECT causa_codigo, linea_id FROM horacio.paros WHERE ts_inicio::date >= ${desdeSql} AND causa_codigo IS NOT NULL UNION ALL SELECT causa_codigo, linea_id FROM horacio.hxh_vigente WHERE fecha >= ${desdeSql} AND causa_codigo IS NOT NULL) x JOIN horacio.causas_paro cp ON cp.codigo=x.causa_codigo JOIN horacio.lineas l ON l.id=x.linea_id GROUP BY cp.boton_texto, l.grupo`);
+  const totals = {}, byCA = {};
+  rows.forEach((r) => { const n = Number(r.n) || 0; totals[r.causa] = (totals[r.causa] || 0) + n; (byCA[r.causa] = byCA[r.causa] || {})[r.grupo] = n; });
+  const causas = Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 8);
+  const pareto = {
+    causas,
+    areas: AREAS.map((k) => ({ key: k, label: grpName(k) + ' - ' + friendly(areaLeader[k]) })),
+    data: AREAS.reduce((o, k) => { o[k] = causas.map((c) => (byCA[c] && byCA[c][k]) || 0); return o; }, {}),
+  };
+  const topArea = AREAS.map((k) => {
+    let causa = null, n = 0;
+    Object.keys(byCA).forEach((c) => { const v = byCA[c][k] || 0; if (v > n) { n = v; causa = c; } });
+    return { area: grpName(k), lider: friendly(areaLeader[k]), causa, n };
+  });
+  return { pareto, topArea };
+}
+const par7 = await buildPareto(`'${fecha}'::date-6`);   // 7 días
+const parDia = await buildPareto(`'${fecha}'::date`);    // solo hoy (R3-HDB2-04)
+const pareto = par7.pareto, topArea = par7.topArea;
+const paretoDia = parDia.pareto, topAreaDia = parDia.topArea;
 
 // ===== Embarques (captura='tarjetas') — detalle aparte, fuera de cumplimiento =====
 const embLines = await pg("SELECT id FROM horacio.lineas WHERE captura='tarjetas' AND activa");
@@ -228,6 +329,63 @@ if (embLines.length) {
   };
 }
 
+// ===== Flujo por etapa (value stream) + cuello de botella por piezas perdidas =====
+const STAGE_ORDER = ['SMT', 'PTH', 'EMPAQUE'];                 // orden físico del proceso
+const STAGE_LABEL = { SMT: 'SMT', PTH: 'PTH', EMPAQUE: 'Empaque' };
+// Ruteo de vertientes (config de piso — Juan 2026-06-23). Promover a tabla horacio.flujo_rutas si crece.
+const ROUTING = {
+  PTH: [
+    { nombre: 'Línea 1', codigos: ['PTH', 'OLA', 'SOLDEO', 'ICT_1'] },
+    { nombre: 'Línea 2', codigos: ['PTH_LINEA_2', 'OLA_2', 'SOLDEO_MANUAL_2', 'ICT_2'] },
+    { nombre: 'Línea 3', codigos: ['PTH_LINEA_3', 'OLA_3', 'SOLDEO_MANUAL_3', 'ICT_3'] },
+    { nombre: 'Acabado común', codigos: ['ICT', 'CONFORMAL_Y'], convergencia: true },
+  ],
+};
+// Ola 2 (línea 2) no existe como estación en el sistema → caja placeholder en 0 (es la máquina descompuesta).
+// OLA_3 = "Ola 3" real de la línea 3 (mantiene su nombre nativo).
+const LABEL_OVERRIDE = { OLA_2: 'Ola 2' };
+const byCodigo = {}; tableros.forEach((t) => { byCodigo[t.codigo] = t; });
+function buildRamas(grupo) {
+  const route = ROUTING[grupo];
+  if (!route) return null;
+  return route.map((br) => ({
+    nombre: br.nombre,
+    convergencia: !!br.convergencia,
+    estaciones: br.codigos.map((cod) => {
+      const t = byCodigo[cod];
+      const label = LABEL_OVERRIDE[cod] || (t ? t.nombre : cod);
+      if (!t) return { nombre: label, real: 0, pct: null, sem: '⚪', ultima: null, sd: 0, perdidas: 0, causa: null };
+      return { nombre: label, real: t.real, plan: t.plan, pct: t.pct, sem: t.sem, ultima: t.ultima, sd: t.sd, perdidas: t.perdidas, causa: (t.causasHoy && t.causasHoy.length ? t.causasHoy.join(' · ') : null), unidad: t.unidad };
+    }),
+  }));
+}
+const flujo = STAGE_ORDER.map((g) => {
+  const bs = tableros.filter((t) => t.grupo === g);
+  const cm = bs.filter((t) => t.plan > 0);                    // solo tableros con meta hoy
+  const sp = cm.reduce((a, t) => a + t.plan, 0);
+  const srRaw = cm.reduce((a, t) => a + t.real, 0);          // real de tableros con meta (para % y real/plan)
+  const srCap = cm.reduce((a, t) => a + Math.min(t.real, t.plan), 0);   // topado por proceso (honesto)
+  const perd = cm.reduce((a, t) => a + t.perdidas, 0);        // piezas perdidas de la etapa
+  const realTotal = bs.reduce((a, t) => a + t.real, 0);      // producción TOTAL (con o sin meta) — para mostrar etapas sin OT
+  const pct = sp > 0 ? Math.min(100, Math.round(srCap / sp * 100)) : null;
+  // estaciones de la etapa, en orden de proceso (tableros ya viene ORDER BY grupo, orden)
+  const estaciones = bs.map((t) => ({ nombre: t.nombre, real: t.real, plan: t.plan, pct: t.pct, sem: t.sem, ultima: t.ultima, sd: t.sd, perdidas: t.perdidas, causa: (t.causasHoy && t.causasHoy.length ? t.causasHoy.join(' · ') : null), unidad: t.unidad }));
+  return { etapa: STAGE_LABEL[g] || g, grupo: g, lider: friendly(areaLeader[g] || ''), pct, real: srRaw, realTotal: realTotal, plan: sp, perdidas: perd, conMeta: cm.length, cuello: false, estaciones: estaciones, ramas: buildRamas(g) };
+});
+if (embarques.activo) flujo.push({ etapa: 'Embarques', grupo: 'EMBARQUES', lider: friendly(areaLeader['EMBARQUES'] || ''), pct: null, tarjetas: embarques.total, perdidas: 0, cuello: false });
+// cuello = etapa con MÁS piezas perdidas y desempeño bajo (<90%); si todas van bien → sin cuello
+let cuelloIdx = -1, maxPerd = 0;
+flujo.forEach((s, i) => { if (s.pct != null && s.pct < 90 && s.perdidas > maxPerd) { maxPerd = s.perdidas; cuelloIdx = i; } });
+let cuelloDetalle = null;
+if (cuelloIdx >= 0) {
+  flujo[cuelloIdx].cuello = true;
+  const g = flujo[cuelloIdx].grupo;
+  const boards = tableros.filter((t) => t.grupo === g && t.perdidas > 0)
+    .sort((a, b) => b.perdidas - a.perdidas).slice(0, 3)
+    .map((t) => ({ nombre: t.nombre, sem: t.sem, pct: t.pct, perdidas: t.perdidas, causa: (t.causasHoy && t.causasHoy.length ? t.causasHoy.join(' · ') : null), desde: t.primerBajo }));
+  cuelloDetalle = { etapa: flujo[cuelloIdx].etapa, lider: flujo[cuelloIdx].lider, perdidas: flujo[cuelloIdx].perdidas, boards };
+}
+
 const payload = {
   fecha, hora: now.toFormat('HH:mm'),
   kpis: {
@@ -237,7 +395,7 @@ const payload = {
     faltAbiertos: Number(K.falt_ab) || 0, calAbiertos: Number(K.cal_ab) || 0,
     reaccionMin: (K.reaccion_min == null ? null : Number(K.reaccion_min)),
   },
-  tableros, lideres, escalamientos: escal, porHora, pareto, topArea, embarques,
+  tableros, lideres, escalamientos: escal, porHora, pareto, topArea, paretoDia, topAreaDia, embarques, flujo, cuelloDetalle,
   revisar: tableros.filter((t) => t.over).map((t) => ({ nombre: t.nombre, pctRaw: t.pctRaw, real: t.real, plan: t.plan, unidad: t.unidad })),
   semana,
 };
