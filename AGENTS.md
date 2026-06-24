@@ -708,6 +708,19 @@ estándar, 14 de OT en proceso). Faltaba la captura/edición → agregado al pan
   = vacío), guarda al salir del campo. Al llenar una parte, su meta y plan salen solos al recargar.
 - El panel V2 ya **escribe** (motivo + estándar) en tablas nuevas; "solo lectura" actualizado en banner.
 
+### ✅ Programa / secuenciador hacia adelante (2026-06-24)
+Tab **"Programa"** en el panel V2 — para que Daniel/equipo **jueguen** con la secuencia y vean
+"a qué día nos ponemos al corriente". 100% cálculo en el navegador (usa `v_plan_dia`, sin SQL nuevo):
+- **Botones de estrategia** (reordena + recalcula al instante): `Vencidas primero` (EDD),
+  `Las que aún se pueden cumplir` (factibles primero por vence asc, las irrecuperables al final),
+  `Mayor pendiente primero`.
+- **Capacidad ajustable**: inputs líneas SMT / PTH (default 2 / 3) → colas paralelas por área.
+- Proyección: por OT `horas = pendiente/std_cuello`; día hábil = 8 h × líneas; acumula por área →
+  `inicia → termina` por orden + badge a tiempo/tarde + titular "te pones al corriente: <fecha>".
+- OT sin estándar salen listadas como **no programables** (capturar en tab Estándar).
+- Pendiente/limitación v1: trata SMT y final como colas independientes (ignora precedencia
+  SMT→final por OT); días calendario hábiles sin saltar domingos. Suficiente para "jugar" escenarios.
+
 ### ⏳ Siguientes (al 2026-06-23)
 - [x] **Escritura V2 (selector de motivo) operativa** ✅ — POST `/horacio-v2` con catálogo cerrado
   (falta_material/personal/maquina/otros). Causa raíz del 404: el nodo webhook POST agregado por

@@ -161,6 +161,7 @@ for (const r of estValRows) {
 
 const DATA = {
   generado: new Date().toISOString().slice(0, 16).replace('T', ' '),
+  hoy: new Date().toISOString().slice(0, 10),
   ots, val, inc, plan, comentarios, motivos, vibDia, vibOt, estParts, estMap,
   resumen: {
     otTotal: inc.length, otConMeta: ots.length,
@@ -243,6 +244,16 @@ tr.det td{background:#fafafa;padding:4px 14px 12px}
 .estcell input{width:100%;border:1px solid var(--bd);border-radius:7px;padding:6px 8px;font-size:14px;margin-top:5px;font-variant-numeric:tabular-nums;font-weight:600}
 .estcell input:focus{outline:none;border-color:var(--accent)}
 .estcell .es{font-size:10.5px;margin-top:3px;min-height:13px}
+.pgctrl{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.pgctrl button{border:1px solid var(--bd);background:#fff;border-radius:99px;padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer}
+.pgctrl button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pgcap{margin-left:auto;display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mut)}
+.pgcap input{width:46px;border:1px solid var(--bd);border-radius:7px;padding:4px 6px;font-weight:700;text-align:center;font-size:13px}
+.pghead{background:#faf5ff;border:1px solid #e9d5ff;border-radius:12px;padding:13px 15px;margin-bottom:14px}
+.pghead .big{font-size:19px;font-weight:720;color:#6b21a8;letter-spacing:-.01em}
+.pghead .l{color:var(--mut);font-size:12.5px;margin-top:3px}
+tr.late td{background:#fef2f2}
+.subhd{font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px}
 </style></head><body>
 <header><h1>Horacio <span class="dot">V2</span> · Meta automática</h1><span class="sub" id="sub"></span></header>
 <div class="wrap">
@@ -250,13 +261,14 @@ tr.det td{background:#fafafa;padding:4px 14px 12px}
 <div class="kpis" id="kpis"></div>
 <div class="tabs">
 <button data-t="plan" class="on">Plan del día</button>
+<button data-t="prog">Programa</button>
 <button data-t="vib">Flujo víbora</button>
 <button data-t="est">Estándar (capturar)</button>
 <button data-t="meta">Meta automática por OT</button>
 <button data-t="val">Validación vs Daniel</button>
 <button data-t="inc">Inconsistencias</button>
 </div>
-<div id="plan"></div><div id="vib" class="hide"></div><div id="est" class="hide"></div><div id="meta" class="hide"></div><div id="val" class="hide"></div><div id="inc" class="hide"></div>
+<div id="plan"></div><div id="prog" class="hide"></div><div id="vib" class="hide"></div><div id="est" class="hide"></div><div id="meta" class="hide"></div><div id="val" class="hide"></div><div id="inc" class="hide"></div>
 </div>
 <script>var DATA=${JSON.stringify(DATA)};</script>
 <script>
@@ -467,6 +479,70 @@ wireMotivos('#meta');
  if(prio.length){pick.value=prio[0].np;renderGrid(prio[0].np);}  // arranca en la 1ª prioridad
 })();
 
+// --- PROGRAMA (secuenciador hacia adelante, multi-estrategia) ---
+(function(){
+ var MES=['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+ function addDays(iso,n){var dt=new Date(iso+'T00:00:00');dt.setDate(dt.getDate()+n);return dt.toISOString().slice(0,10);}
+ function fmt(iso){var p=iso.split('-');return p[2]+'-'+MES[parseInt(p[1],10)];}
+ function diff(a,b){return Math.round((new Date(a+'T00:00:00')-new Date(b+'T00:00:00'))/86400000);}
+ var HOY=d.hoy;
+ // items programables = OT con pendiente y cuello (estándar). guardamos área.
+ var items=d.plan.filter(function(p){return p.pendiente>0 && p.stdCuello;});
+ var noProg=d.plan.filter(function(p){return p.pendiente>0 && !p.stdCuello;});
+ function cmpV(a,b){return (a.vence||'9999')<(b.vence||'9999')?-1:(a.vence||'9999')>(b.vence||'9999')?1:0;}
+ var MODES={
+  vencidas:function(a,b){return cmpV(a,b);},
+  cumplibles:function(a,b){var fa=a.factible===true?0:1,fb=b.factible===true?0:1;if(fa!==fb)return fa-fb;return fa===0?cmpV(a,b):-cmpV(a,b);},
+  pendiente:function(a,b){return b.pendiente-a.pendiente;}
+ };
+ var MODEL={vencidas:'Vencidas primero',cumplibles:'Las que aún se pueden cumplir',pendiente:'Mayor pendiente primero'};
+ var state={mode:'vencidas',smt:2,pth:3};
+
+ function schedule(){
+  var lines={SMT:Math.max(1,state.smt),PTH:Math.max(1,state.pth)};
+  var cum={SMT:0,PTH:0}, horizon={SMT:0,PTH:0};
+  var sorted=items.slice().sort(MODES[state.mode]);
+  var out=sorted.map(function(p){
+   var area=p.area, hrs=p.pendiente/p.stdCuello, cap=8*lines[area];
+   var startOff=Math.floor(cum[area]/cap); cum[area]+=hrs;
+   var finOff=Math.ceil(cum[area]/cap); horizon[area]=Math.max(horizon[area],finOff);
+   var fin=addDays(HOY,finOff);
+   var tarde=p.vence?diff(fin,p.vence):null;
+   return {p:p,inicia:addDays(HOY,startOff),termina:fin,tarde:tarde};
+  });
+  var maxOff=Math.max(horizon.SMT,horizon.PTH,0);
+  return {out:out,fin:addDays(HOY,maxOff),dias:maxOff,horizon:horizon,lines:lines};
+ }
+
+ function render(){
+  var s=schedule();
+  var aTiempo=s.out.filter(function(x){return x.tarde!=null&&x.tarde<=0;}).length;
+  var tarde=s.out.filter(function(x){return x.tarde!=null&&x.tarde>0;}).length;
+  var ctrl='<div class="pgctrl">'+Object.keys(MODEL).map(function(k){
+    return '<button data-m="'+k+'"'+(state.mode===k?' class="on"':'')+'>'+MODEL[k]+'</button>';}).join('')+
+    '<span class="pgcap">Líneas: SMT <input id="pgsmt" type="number" min="1" value="'+state.smt+'"> PTH <input id="pgpth" type="number" min="1" value="'+state.pth+'"></span></div>';
+  var head='<div class="pghead"><div class="big">Te pones al corriente: '+fmt(s.fin)+' <span class="l" style="font-weight:500">(~'+s.dias+' días hábiles)</span></div>'+
+    '<div class="l">Estrategia: <b>'+MODEL[state.mode]+'</b> · capacidad SMT '+s.lines.SMT+' / PTH '+s.lines.PTH+' líneas · '+
+    '<span style="color:var(--ok)">'+aTiempo+' a tiempo</span> · <span style="color:var(--bad)">'+tarde+' tarde</span></div></div>';
+  var rows=s.out.map(function(x,i){
+   var p=x.p;
+   var vs=x.tarde==null?'<span class="muted">sin fecha</span>':(x.tarde<=0?'<span class="pill p-ok">a tiempo</span>':'<span class="pill p-bad">+'+x.tarde+'d tarde</span>');
+   return '<tr'+(x.tarde>0?' class="late"':'')+'><td class="tdimm">'+(i+1)+'</td><td>'+esc(p.orden)+'</td><td>'+esc(p.np||'—')+
+     '</td><td>'+p.area+'</td><td class="num">'+p.pendiente+'</td><td>'+esc(p.cuello||'')+' <span class="muted">@'+(p.stdCuello||'-')+'</span>'+
+     '</td><td>'+fmt(x.inicia)+' → <b>'+fmt(x.termina)+'</b></td><td>'+vs+'</td></tr>';
+  }).join('');
+  var tabla='<div class="card"><table><thead><tr><th>#</th><th>OT</th><th>Parte</th><th>Área</th><th class="num">Pend.</th><th>Cuello</th><th>Inicia → Termina</th><th>Entrega</th></tr></thead><tbody>'+
+    (rows||'<tr><td colspan=8 class="empty">Sin órdenes programables.</td></tr>')+'</tbody></table>'+
+    (noProg.length?'<div class="warn warn2" style="margin-top:10px"><b>⚠ '+noProg.length+' OT no se pueden programar</b> (sin estándar): '+noProg.map(function(p){return esc(p.orden);}).join(', ')+'. Captúralas en el tab Estándar.</div>':'')+'</div>';
+  $('prog').innerHTML='<div class="muted" style="margin-bottom:10px">Acomoda el atraso con cada estrategia y mira a qué día llegas. Ajusta las líneas según cuántas corran en paralelo. Día hábil = 8 h productivas.</div>'+ctrl+head+tabla;
+  Array.prototype.forEach.call($('prog').querySelectorAll('.pgctrl button'),function(b){b.onclick=function(){state.mode=b.getAttribute('data-m');render();};});
+  var si=$('pgsmt'),pi=$('pgpth');
+  if(si)si.onchange=function(){state.smt=parseInt(si.value,10)||1;render();};
+  if(pi)pi.onchange=function(){state.pth=parseInt(pi.value,10)||1;render();};
+ }
+ render();
+})();
+
 // --- VALIDACION ---
 var vr=d.val.map(function(v){
  var cls=v.dif==null?'p-mut':Math.abs(v.dif)<2?'p-ok':Math.abs(v.dif)<15?'p-warn':'p-bad';
@@ -493,7 +569,7 @@ $('inc').innerHTML='<div class="card"><h2>Inconsistencias a revisar con Daniel</
 var btns=document.querySelectorAll('.tabs button');
 btns.forEach(function(b){b.onclick=function(){
  btns.forEach(function(x){x.classList.remove('on');});b.classList.add('on');
- ['plan','vib','est','meta','val','inc'].forEach(function(t){$(t).classList.toggle('hide',t!==b.dataset.t);});
+ ['plan','prog','vib','est','meta','val','inc'].forEach(function(t){$(t).classList.toggle('hide',t!==b.dataset.t);});
 };});
 })();
 </script></body></html>`;
