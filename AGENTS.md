@@ -684,18 +684,30 @@ comentario. Gotcha resuelto: `onclick` inline con `\'` se colapsa dentro del tem
 el JS del navegador → usar handler delegado (`querySelectorAll(...).onclick`). El doble `node --check`
 NO lo cazó (revisa el código pre-evaluación); validar con **mock-DOM sobre el HTML ya servido**.
 
+### ✅ Fase 3 — Flujo "víbora" + captura errónea por estación (2026-06-24, sql/030-031)
+"La planta corre como víbora": SMT → PTH → Empaque → Embarques; lo que cierra un día alimenta
+al siguiente. Se **sincronizó el HxH que ya capturan las líderes** con el flujo, sin captura nueva.
+- **`v_vibora_dia`** (sql/030) — pzs por macro-etapa (`lineas.grupo`) y día = el pulso.
+  Hallazgo de modelado (decisión con Juan): sumar todos los tableros de PTH/Empaque **infla por
+  doble conteo** (una pieza pasa por varias estaciones en serie). El pulso se muestra como
+  "actividad por etapa" (no conservación estricta); el WIP exacto va **por OT**.
+- **`v_vibora_ot`** (sql/031) — WIP EXACTO por orden: `smt_term − fin_term` (SMT y final son 1:1
+  por `orden_base`). `posicion`: en_smt / esperando_pth / en_final / terminada / sin_avance.
+  Ej real: 260300801 (TJ360) WIP 1563; 260600501 (05-1829-B1) SMT 50/50 pero final 0/50 = 50 esperando PTH.
+- **Warning captura errónea:** el pulso marca en rojo los días donde Embarques > Empaque
+  (empaque sub-captura, o se embarcó de inventario previo) — el caso 495 vs 2066 que vio Juan.
+- Panel V2: tab **"Flujo víbora"** (pulso diario + serpientes por OT con barras SMT→Final y WIP).
+
 ### ⏳ Siguientes (al 2026-06-23)
 - [x] **Escritura V2 (selector de motivo) operativa** ✅ — POST `/horacio-v2` con catálogo cerrado
   (falta_material/personal/maquina/otros). Causa raíz del 404: el nodo webhook POST agregado por
   API quedó **sin `webhookId`** → n8n no registra el método; se le puso uno y se reactivó.
 - [ ] **(Fase 3) Captura directa por manufactura:** extender la escritura V2 a **avance/cantidad
   terminada** por OT (cierra el loop, sin importar Excel) + quién/cuándo (trazabilidad).
-- [ ] **(Fase 3) Warning de posible captura errónea por estación:** cuando una estación reporta
-  muchas más/menos piezas que la de aguas arriba (caso empaque 495 vs embarque 2066 que vio Juan),
-  marcar "posible captura errónea". Check de consistencia entre estaciones de la misma ruta. (No quedó en Fase 2.)
-- [ ] **(Fase 3) Flujo "víbora" + sincronización gráfica:** la planta corre como víbora — lo que
-  cierra el martes arranca el siguiente día. Falta sincronizar el avance entre días/estaciones;
-  en Fase 3 hacerlo de forma **gráfica** (visualizar el flujo continuo, empatar cierres con arranques).
+- [x] **(Fase 3) Warning de captura errónea por estación** ✅ — en tab Flujo víbora: pulso diario
+  marca en rojo donde Embarques > Empaque (sub-captura o WIP previo). Ver sql/030.
+- [x] **(Fase 3) Flujo "víbora" gráfico** ✅ — tab Flujo víbora: pulso diario por etapa + WIP exacto
+  POR OT (serpiente SMT→Final con WIP entre etapas). Ver sql/030-031.
 - [ ] **(R3-HDB2-09) Dedupe tableros de Chío:** 18 activos con duplicados (FCT/Ensamble/Grabación)
   del re-import 19-jun. Definir con Daniel cuál set conservar + fijar tope por líder (~4–6).
 - [ ] **(R3-HDB2-05) Refinar causas:** agregar "liberación de máquina" (Calidad), englobar, acotar

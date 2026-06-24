@@ -58,6 +58,11 @@ const comRows = await pg(
   "SELECT orden_trabajo,comentario FROM horacio.ordenes_trabajo WHERE comentario IS NOT NULL");
 const motRows = await pg(
   "SELECT orden_trabajo,motivo_no_corre FROM horacio.ordenes_trabajo WHERE motivo_no_corre IS NOT NULL");
+const vibDiaRows = await pg(
+  "SELECT grupo,fecha,pzs FROM horacio.v_vibora_dia ORDER BY fecha");
+const vibOtRows = await pg(
+  "SELECT orden_base,numero_parte,descripcion,smt_ord,smt_term,fin_ord,fin_term,wip,posicion,fecha_vence " +
+  "FROM horacio.v_vibora_ot ORDER BY wip DESC, posicion");
 
 // agrupar v_ot_meta por OT
 const otMap = {};
@@ -106,9 +111,17 @@ for (const c of comRows) comentarios[c.orden_trabajo] = c.comentario;
 const motivos = {};
 for (const m of motRows) motivos[m.orden_trabajo] = m.motivo_no_corre;
 
+const N = (x) => (x == null ? null : Number(x));
+const vibDia = vibDiaRows.map((r) => ({ grupo: r.grupo, fecha: r.fecha, pzs: N(r.pzs) || 0 }));
+const vibOt = vibOtRows.map((r) => ({
+  orden: r.orden_base, np: r.numero_parte, desc: r.descripcion,
+  smtOrd: N(r.smt_ord), smtTerm: N(r.smt_term), finOrd: N(r.fin_ord), finTerm: N(r.fin_term),
+  wip: N(r.wip) || 0, pos: r.posicion, vence: r.fecha_vence
+}));
+
 const DATA = {
   generado: new Date().toISOString().slice(0, 16).replace('T', ' '),
-  ots, val, inc, plan, comentarios, motivos,
+  ots, val, inc, plan, comentarios, motivos, vibDia, vibOt,
   resumen: {
     otTotal: inc.length, otConMeta: ots.length,
     sinEst: inc.filter((x) => x.sinEst).length,
@@ -167,6 +180,20 @@ tr.det td{background:#fafafa;padding:4px 14px 12px}
 .motbox .cl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);font-weight:700}
 .motbox select{border:1px solid var(--bd);border-radius:8px;padding:5px 9px;font-size:12.5px;background:#fff;color:var(--tx);font-weight:600}
 .savemsg{font-size:11.5px}
+.snake{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--bd)}
+.snake:last-child{border:0}
+.snhead{flex:0 0 200px;font-size:12.5px}.snhead b{font-weight:680}.snhead .sd{color:var(--mut);font-size:11px}
+.stg{flex:1 1 120px;min-width:90px}
+.stg .sl{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);font-weight:700;margin-bottom:3px;display:flex;justify-content:space-between}
+.pbar{height:16px;background:#ececed;border-radius:6px;overflow:hidden;position:relative}
+.pbar>i{display:block;height:100%;background:var(--ok);border-radius:6px}
+.pbar.na{background:repeating-linear-gradient(45deg,#f1f1f4,#f1f1f4 5px,#e8e8eb 5px,#e8e8eb 10px)}
+.wiparrow{flex:0 0 auto;text-align:center;font-size:11px;color:var(--mut);min-width:54px}
+.wiparrow .w{display:block;font-weight:800;color:var(--warn);font-size:13px}
+.pospill{flex:0 0 auto;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px}
+.pos-en_smt{background:#dbeafe;color:#1e40af}.pos-esperando_pth{background:#fde68a;color:#92400e}
+.pos-en_final{background:#e9d5ff;color:#6b21a8}.pos-terminada{background:#a7f3d0;color:#065f46}.pos-sin_avance{background:#f1f1f4;color:#71717a}
+.pulso td.hot{background:#fef2f2;color:#991b1b;font-weight:700}
 </style></head><body>
 <header><h1>Horacio <span class="dot">V2</span> · Meta automática</h1><span class="sub" id="sub"></span></header>
 <div class="wrap">
@@ -174,11 +201,12 @@ tr.det td{background:#fafafa;padding:4px 14px 12px}
 <div class="kpis" id="kpis"></div>
 <div class="tabs">
 <button data-t="plan" class="on">Plan del día</button>
+<button data-t="vib">Flujo víbora</button>
 <button data-t="meta">Meta automática por OT</button>
 <button data-t="val">Validación vs Daniel</button>
 <button data-t="inc">Inconsistencias</button>
 </div>
-<div id="plan"></div><div id="meta" class="hide"></div><div id="val" class="hide"></div><div id="inc" class="hide"></div>
+<div id="plan"></div><div id="vib" class="hide"></div><div id="meta" class="hide"></div><div id="val" class="hide"></div><div id="inc" class="hide"></div>
 </div>
 <script>var DATA=${JSON.stringify(DATA)};</script>
 <script>
@@ -293,6 +321,53 @@ function metaSec(smt,titulo){
 $('meta').innerHTML=metaSec(true,'SMT — subensamble')+metaSec(false,'PTH / Producto final');
 wireMotivos('#meta');
 
+// --- FLUJO VÍBORA ---
+(function(){
+ // pulso diario
+ var ETAPAS=['SMT','PTH','EMPAQUE','EMBARQUES'];
+ var byDia={};
+ d.vibDia.forEach(function(x){(byDia[x.fecha]=byDia[x.fecha]||{})[x.grupo]=x.pzs;});
+ var fechas=Object.keys(byDia).sort();
+ var anomalia=false;
+ var pulso=fechas.map(function(f){
+  var row=byDia[f];
+  var emp=row.EMPAQUE||0, emb=row.EMBARQUES||0, hot=(emb>emp&&emb>0);
+  if(hot)anomalia=true;
+  return '<tr><td>'+esc(f)+'</td>'+ETAPAS.map(function(g){
+    var v=row[g]||0; var cls=(g==='EMPAQUE'&&hot)?' class="num hot"':' class="num"';
+    return '<td'+cls+'>'+(v||'·')+'</td>';
+  }).join('')+'</tr>';
+ }).join('');
+ var pulsoCard='<div class="card"><h2>Pulso diario — actividad por etapa</h2>'+
+   '<table class="pulso"><thead><tr><th>Fecha</th><th class="num">SMT</th><th class="num">PTH</th><th class="num">Empaque</th><th class="num">Embarques</th></tr></thead><tbody>'+
+   (pulso||'<tr><td colspan=5 class="empty">Sin datos.</td></tr>')+'</tbody></table>'+
+   (anomalia?'<div class="warn bad" style="margin-top:10px"><b>⚠ Posible captura errónea.</b> Hay días donde Embarques sacó más de lo que Empaque registró — empaque está sub-capturando, o se embarcó de inventario previo. Revisar con piso.</div>':'')+
+   '<div class="muted" style="margin-top:6px">Actividad por etapa (PTH/Empaque son varias estaciones; no es conservación estricta). El WIP exacto va abajo, por OT.</div></div>';
+
+ // WIP por OT (serpiente exacta)
+ var POSL={en_smt:'en SMT',esperando_pth:'esperando PTH',en_final:'en final',terminada:'terminada',sin_avance:'sin avance'};
+ function stage(lbl,term,ord){
+  if(ord==null) return '<div class="stg"><div class="sl"><span>'+lbl+'</span><span>n/a</span></div><div class="pbar na"></div></div>';
+  var pct=ord>0?Math.min(100,Math.round(term/ord*100)):0;
+  return '<div class="stg"><div class="sl"><span>'+lbl+'</span><span>'+(term||0)+'/'+ord+'</span></div><div class="pbar"><i style="width:'+pct+'%"></i></div></div>';
+ }
+ var rows=d.vibOt.map(function(o){
+  return '<div class="snake"><div class="snhead"><b>'+esc(o.orden)+'</b> <span class="pospill pos-'+o.pos+'">'+esc(POSL[o.pos]||o.pos)+'</span>'+
+    '<div class="sd">'+esc(o.np||'—')+'</div></div>'+
+    stage('SMT',o.smtTerm,o.smtOrd)+
+    '<div class="wiparrow">→'+(o.wip>0?'<span class="w">⏳'+o.wip+'</span>':'')+'</div>'+
+    stage('Final (PTH→Empaque)',o.finTerm,o.finOrd)+'</div>';
+ }).join('');
+ var cont={};d.vibOt.forEach(function(o){cont[o.pos]=(cont[o.pos]||0)+1;});
+ var wipTot=d.vibOt.reduce(function(a,o){return a+o.wip;},0);
+ var chips=Object.keys(POSL).filter(function(k){return cont[k];}).map(function(k){
+   return '<span class="pospill pos-'+k+'" style="margin-right:6px">'+POSL[k]+': '+cont[k]+'</span>';}).join('');
+ var wipCard='<div class="card"><h2>WIP por OT — dónde está cada orden en el flujo</h2>'+
+   '<div style="margin-bottom:10px">'+chips+'<span class="chip" style="font-weight:700">WIP total entre SMT y final: '+wipTot+' pzs</span></div>'+
+   (rows||'<div class="empty">Sin órdenes.</div>')+'</div>';
+ $('vib').innerHTML=pulsoCard+wipCard;
+})();
+
 // --- VALIDACION ---
 var vr=d.val.map(function(v){
  var cls=v.dif==null?'p-mut':Math.abs(v.dif)<2?'p-ok':Math.abs(v.dif)<15?'p-warn':'p-bad';
@@ -319,7 +394,7 @@ $('inc').innerHTML='<div class="card"><h2>Inconsistencias a revisar con Daniel</
 var btns=document.querySelectorAll('.tabs button');
 btns.forEach(function(b){b.onclick=function(){
  btns.forEach(function(x){x.classList.remove('on');});b.classList.add('on');
- ['plan','meta','val','inc'].forEach(function(t){$(t).classList.toggle('hide',t!==b.dataset.t);});
+ ['plan','vib','meta','val','inc'].forEach(function(t){$(t).classList.toggle('hide',t!==b.dataset.t);});
 };});
 })();
 </script></body></html>`;
