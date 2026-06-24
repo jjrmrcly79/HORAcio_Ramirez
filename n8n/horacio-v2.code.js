@@ -35,6 +35,29 @@ if (isPost) {
              ", motivo_ts=" + (motivo ? 'now()' : 'NULL') + " WHERE orden_trabajo='" + sql(orden) + "'");
     return J({ ok: true, motivo: motivo || null });
   }
+  if (body.action === 'set_estandar') {
+    const PROC = ['PP_481','PP_520','PP_411_481','PP_421','ENSAMBLE_MANUAL','WAVE_SOLDER','SOLDEO_MANUAL','ICT','GRB','CONFORMAL','LIMPIEZA','FCT','ENSAMBLES','PRUEBA_FCT','EMPAQUE'];
+    const np = String(body.numero_parte || '').trim().toUpperCase();
+    const proceso = String(body.proceso || '');
+    const raw = body.std_hr;
+    if (!np) return J({ ok: false, error: 'falta parte' });
+    if (PROC.indexOf(proceso) < 0) return J({ ok: false, error: 'proceso inválido' });
+    let res = await pg("SELECT id FROM horacio.partes WHERE numero_parte='" + sql(np) + "' ORDER BY no_parte_ensamble LIMIT 1");
+    let pid = res && res[0] && res[0].id;
+    if (!pid) {
+      const desc = sql(String(body.descripcion || ''));
+      res = await pg("INSERT INTO horacio.partes(numero_parte,no_parte_ensamble,descripcion) VALUES('" + sql(np) + "','N/A','" + desc + "') ON CONFLICT (numero_parte,no_parte_ensamble) DO UPDATE SET descripcion=EXCLUDED.descripcion RETURNING id");
+      pid = res[0].id;
+    }
+    if (raw === '' || raw === null || raw === undefined) {
+      await pg("DELETE FROM horacio.estandar_proceso WHERE parte_id='" + pid + "' AND proceso='" + proceso + "'");
+      return J({ ok: true, cleared: true });
+    }
+    const v = Number(raw);
+    if (!(v > 0)) return J({ ok: false, error: 'valor inválido' });
+    await pg("INSERT INTO horacio.estandar_proceso(parte_id,proceso,std_hr) VALUES('" + pid + "','" + proceso + "'," + v + ") ON CONFLICT (parte_id,proceso) DO UPDATE SET std_hr=EXCLUDED.std_hr");
+    return J({ ok: true, std: v });
+  }
   return J({ ok: false, error: 'acción desconocida' });
 }
 
@@ -63,6 +86,15 @@ const vibDiaRows = await pg(
 const vibOtRows = await pg(
   "SELECT orden_base,numero_parte,descripcion,smt_ord,smt_term,fin_ord,fin_term,wip,posicion,fecha_vence " +
   "FROM horacio.v_vibora_ot ORDER BY wip DESC, posicion");
+const estPartRows = await pg(
+  "SELECT p.numero_parte, count(e.id) AS nstd, " +
+  "EXISTS(SELECT 1 FROM horacio.ordenes_trabajo o WHERE o.numero_parte=p.numero_parte AND o.estado_nexia<>'muerta') AS en_ot, " +
+  "max(COALESCE(p.descripcion,(SELECT descripcion FROM horacio.ordenes_trabajo o WHERE o.numero_parte=p.numero_parte LIMIT 1))) AS descripcion " +
+  "FROM horacio.partes p LEFT JOIN horacio.estandar_proceso e ON e.parte_id=p.id " +
+  "GROUP BY p.numero_parte ORDER BY (count(e.id)=0) DESC, p.numero_parte");
+const estValRows = await pg(
+  "SELECT p.numero_parte, e.proceso, round(avg(e.std_hr),1) AS std " +
+  "FROM horacio.partes p JOIN horacio.estandar_proceso e ON e.parte_id=p.id GROUP BY p.numero_parte, e.proceso");
 
 // agrupar v_ot_meta por OT
 const otMap = {};
@@ -119,9 +151,17 @@ const vibOt = vibOtRows.map((r) => ({
   wip: N(r.wip) || 0, pos: r.posicion, vence: r.fecha_vence
 }));
 
+const estParts = estPartRows.map((r) => ({
+  np: r.numero_parte, desc: r.descripcion, nstd: N(r.nstd) || 0, enOt: !!r.en_ot
+}));
+const estMap = {};
+for (const r of estValRows) {
+  (estMap[r.numero_parte] = estMap[r.numero_parte] || {})[r.proceso] = N(r.std);
+}
+
 const DATA = {
   generado: new Date().toISOString().slice(0, 16).replace('T', ' '),
-  ots, val, inc, plan, comentarios, motivos, vibDia, vibOt,
+  ots, val, inc, plan, comentarios, motivos, vibDia, vibOt, estParts, estMap,
   resumen: {
     otTotal: inc.length, otConMeta: ots.length,
     sinEst: inc.filter((x) => x.sinEst).length,
@@ -194,19 +234,29 @@ tr.det td{background:#fafafa;padding:4px 14px 12px}
 .pos-en_smt{background:#dbeafe;color:#1e40af}.pos-esperando_pth{background:#fde68a;color:#92400e}
 .pos-en_final{background:#e9d5ff;color:#6b21a8}.pos-terminada{background:#a7f3d0;color:#065f46}.pos-sin_avance{background:#f1f1f4;color:#71717a}
 .pulso td.hot{background:#fef2f2;color:#991b1b;font-weight:700}
+.estpick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.estpick select{border:1px solid var(--bd);border-radius:9px;padding:7px 10px;font-size:13px;background:#fff;min-width:280px;font-weight:600}
+.estgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.estcell{border:1px solid var(--bd);border-radius:10px;padding:9px 11px;background:#fff}
+.estcell.empty{background:#fffbeb;border-color:#fde68a}
+.estcell .el{font-size:11px;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.03em;display:flex;justify-content:space-between;align-items:center}
+.estcell input{width:100%;border:1px solid var(--bd);border-radius:7px;padding:6px 8px;font-size:14px;margin-top:5px;font-variant-numeric:tabular-nums;font-weight:600}
+.estcell input:focus{outline:none;border-color:var(--accent)}
+.estcell .es{font-size:10.5px;margin-top:3px;min-height:13px}
 </style></head><body>
 <header><h1>Horacio <span class="dot">V2</span> · Meta automática</h1><span class="sub" id="sub"></span></header>
 <div class="wrap">
-<div class="banner"><b>Versión de prueba (solo lectura).</b> Calcula la meta por hora desde el Estándar x Hora. No modifica lo que Daniel usa en vivo. Cuando los números te cuadren, se cablea al <b>/orden</b> del bot.</div>
+<div class="banner"><b>Versión de prueba de Juan.</b> Calcula la meta desde el Estándar x Hora y deja <b>capturar/editar</b> el estándar y el motivo. <b>No toca</b> lo que Daniel usa en vivo (su bot, panel y dashboard siguen igual). Escribe solo en las tablas nuevas.</div>
 <div class="kpis" id="kpis"></div>
 <div class="tabs">
 <button data-t="plan" class="on">Plan del día</button>
 <button data-t="vib">Flujo víbora</button>
+<button data-t="est">Estándar (capturar)</button>
 <button data-t="meta">Meta automática por OT</button>
 <button data-t="val">Validación vs Daniel</button>
 <button data-t="inc">Inconsistencias</button>
 </div>
-<div id="plan"></div><div id="vib" class="hide"></div><div id="meta" class="hide"></div><div id="val" class="hide"></div><div id="inc" class="hide"></div>
+<div id="plan"></div><div id="vib" class="hide"></div><div id="est" class="hide"></div><div id="meta" class="hide"></div><div id="val" class="hide"></div><div id="inc" class="hide"></div>
 </div>
 <script>var DATA=${JSON.stringify(DATA)};</script>
 <script>
@@ -368,6 +418,55 @@ wireMotivos('#meta');
  $('vib').innerHTML=pulsoCard+wipCard;
 })();
 
+// --- EDITOR DE ESTÁNDAR (capturar/editar) ---
+(function(){
+ var PROC=[['PP_481','P&P 481'],['PP_520','P&P 520'],['PP_411_481','P&P 411-481'],['PP_421','P&P 421'],
+   ['ENSAMBLE_MANUAL','Ensamble Manual'],['WAVE_SOLDER','Wave/Ola'],['SOLDEO_MANUAL','Soldeo Manual'],
+   ['ICT','ICT'],['GRB','Grabación'],['CONFORMAL','Conformal'],['LIMPIEZA','Limpieza'],['FCT','FCT'],
+   ['ENSAMBLES','Ensambles'],['PRUEBA_FCT','Prueba FCT'],['EMPAQUE','Empaque']];
+ var prio=d.estParts.filter(function(p){return p.nstd===0&&p.enOt;});
+ var sin=d.estParts.filter(function(p){return p.nstd===0&&!p.enOt;});
+ var con=d.estParts.filter(function(p){return p.nstd>0;});
+ function opts(list){return list.map(function(p){return '<option value="'+esc(p.np)+'">'+esc(p.np)+(p.desc?' · '+esc(String(p.desc).slice(0,40)):'')+'</option>';}).join('');}
+ var sel='<select id="estpick"><option value="">— elige una parte —</option>'+
+   (prio.length?'<optgroup label="⚠ Sin estándar · de OT en proceso ('+prio.length+')">'+opts(prio)+'</optgroup>':'')+
+   (sin.length?'<optgroup label="Sin estándar ('+sin.length+')">'+opts(sin)+'</optgroup>':'')+
+   (con.length?'<optgroup label="Con estándar — editar ('+con.length+')">'+opts(con)+'</optgroup>':'')+'</select>';
+ $('est').innerHTML='<div class="card"><h2>Capturar / editar estándar por hora</h2>'+
+   '<div class="muted" style="margin-bottom:10px">Llena el Std/Hr de cada estación. Se guarda al salir del campo. Vacío = borra ese estándar. Las partes <b>⚠ de OT en proceso</b> son prioridad: al llenarlas, su meta y plan salen solos.</div>'+
+   '<div class="estpick">'+sel+'<span id="estinfo" class="muted"></span></div>'+
+   '<div id="estgrid"></div></div>';
+
+ function renderGrid(np){
+  var info=$('estinfo');
+  if(!np){$('estgrid').innerHTML='';if(info)info.textContent='';return;}
+  var cur=d.estMap[np]||{};
+  var pp=d.estParts.filter(function(x){return x.np===np;})[0]||{};
+  if(info)info.innerHTML=pp.enOt?'<span class="wbadge bad">en OT en proceso</span>':'';
+  $('estgrid').innerHTML='<div class="estgrid">'+PROC.map(function(pc){
+   var v=cur[pc[0]];var has=v!=null;
+   return '<div class="estcell'+(has?'':' empty')+'" data-proc="'+pc[0]+'"><div class="el"><span>'+esc(pc[1])+'</span><span>'+(has?'':'vacío')+'</span></div>'+
+     '<input type="number" min="0" step="0.1" value="'+(has?v:'')+'" data-np="'+esc(np)+'" data-proc="'+pc[0]+'" placeholder="—"><div class="es muted"></div></div>';
+  }).join('')+'</div>';
+  Array.prototype.forEach.call($('estgrid').querySelectorAll('input'),function(inp){
+   inp.onchange=function(){
+    var es=inp.parentNode.querySelector('.es');es.textContent='guardando…';es.className='es muted';
+    api({action:'set_estandar',numero_parte:inp.getAttribute('data-np'),proceso:inp.getAttribute('data-proc'),std_hr:inp.value,descripcion:pp.desc||''}).then(function(r){
+     if(r&&r.ok){
+      es.textContent=r.cleared?'borrado':'guardado ✓';es.className='es';es.style.color='var(--ok)';
+      d.estMap[np]=d.estMap[np]||{};
+      if(r.cleared){delete d.estMap[np][inp.getAttribute('data-proc')];inp.parentNode.classList.add('empty');}
+      else{d.estMap[np][inp.getAttribute('data-proc')]=r.std;inp.parentNode.classList.remove('empty');}
+     } else {es.textContent=(r&&r.error)||'error';es.style.color='var(--bad)';}
+    }).catch(function(){es.textContent='error de red';es.style.color='var(--bad)';});
+   };
+  });
+ }
+ var pick=$('estpick');
+ pick.onchange=function(){renderGrid(pick.value);};
+ if(prio.length){pick.value=prio[0].np;renderGrid(prio[0].np);}  // arranca en la 1ª prioridad
+})();
+
 // --- VALIDACION ---
 var vr=d.val.map(function(v){
  var cls=v.dif==null?'p-mut':Math.abs(v.dif)<2?'p-ok':Math.abs(v.dif)<15?'p-warn':'p-bad';
@@ -394,7 +493,7 @@ $('inc').innerHTML='<div class="card"><h2>Inconsistencias a revisar con Daniel</
 var btns=document.querySelectorAll('.tabs button');
 btns.forEach(function(b){b.onclick=function(){
  btns.forEach(function(x){x.classList.remove('on');});b.classList.add('on');
- ['plan','vib','meta','val','inc'].forEach(function(t){$(t).classList.toggle('hide',t!==b.dataset.t);});
+ ['plan','vib','est','meta','val','inc'].forEach(function(t){$(t).classList.toggle('hide',t!==b.dataset.t);});
 };});
 })();
 </script></body></html>`;

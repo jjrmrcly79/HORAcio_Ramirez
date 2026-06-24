@@ -698,6 +698,16 @@ al siguiente. Se **sincronizó el HxH que ya capturan las líderes** con el fluj
   (empaque sub-captura, o se embarcó de inventario previo) — el caso 495 vs 2066 que vio Juan.
 - Panel V2: tab **"Flujo víbora"** (pulso diario + serpientes por OT con barras SMT→Final y WIP).
 
+### ✅ Editor de estándar en el panel — cierra el problema original (2026-06-24)
+El motivo de migrar el Excel a BD era poder **ajustar lo faltante** (39 filas vacías, 34 partes sin
+estándar, 14 de OT en proceso). Faltaba la captura/edición → agregado al panel V2:
+- POST `set_estandar` (token-gated): upsert `estandar_proceso` por `(numero_parte, proceso)`; crea la
+  parte si no existe (ON CONFLICT); std vacío = borra; valida proceso ∈ 15 + valor>0. service_role.
+- Tab **"Estándar (capturar)"**: selector de parte (agrupado: ⚠ sin estándar de OT en proceso →
+  prioridad, sin estándar, con estándar para editar) + grid de las 15 estaciones con inputs (amarillo
+  = vacío), guarda al salir del campo. Al llenar una parte, su meta y plan salen solos al recargar.
+- El panel V2 ya **escribe** (motivo + estándar) en tablas nuevas; "solo lectura" actualizado en banner.
+
 ### ⏳ Siguientes (al 2026-06-23)
 - [x] **Escritura V2 (selector de motivo) operativa** ✅ — POST `/horacio-v2` con catálogo cerrado
   (falta_material/personal/maquina/otros). Causa raíz del 404: el nodo webhook POST agregado por
