@@ -718,8 +718,13 @@ Tab **"Programa"** en el panel V2 — para que Daniel/equipo **jueguen** con la 
 - Proyección: por OT `horas = pendiente/std_cuello`; día hábil = 8 h × líneas; acumula por área →
   `inicia → termina` por orden + badge a tiempo/tarde + titular "te pones al corriente: <fecha>".
 - OT sin estándar salen listadas como **no programables** (capturar en tab Estándar).
-- Pendiente/limitación v1: trata SMT y final como colas independientes (ignora precedencia
-  SMT→final por OT); días calendario hábiles sin saltar domingos. Suficiente para "jugar" escenarios.
+- **Precedencia SMT→final** (2026-06-24): se programa SMT primero (guarda finOff por `orden_base`);
+  el FINAL no arranca antes de que cierre su SMT (inserta espera; marca "(espera SMT)"). Dos
+  secciones en la tabla. Día hábil sin saltar domingos (afinable).
+- **Control con 3 líderes — HxH mínimo sugerido** (2026-06-24): con 1 líder por área (SMT–Viridiana,
+  PTH–Yadira, Conformal/Empaque), recomienda capturar solo el **cuello de cada área** (estación que
+  marca el ritmo, por frecuencia en las OT) → 1–2 tableros por líder en vez de 15. `liderDe(proceso)`
+  mapea estación→área. Calculado de `v_plan_dia`.
 
 ### ⏳ Siguientes (al 2026-06-23)
 - [x] **Escritura V2 (selector de motivo) operativa** ✅ — POST `/horacio-v2` con catálogo cerrado

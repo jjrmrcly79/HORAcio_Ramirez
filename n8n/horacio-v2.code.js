@@ -479,14 +479,14 @@ wireMotivos('#meta');
  if(prio.length){pick.value=prio[0].np;renderGrid(prio[0].np);}  // arranca en la 1ª prioridad
 })();
 
-// --- PROGRAMA (secuenciador hacia adelante, multi-estrategia) ---
+// --- PROGRAMA (secuenciador hacia adelante, multi-estrategia, precedencia SMT→final) ---
 (function(){
  var MES=['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
  function addDays(iso,n){var dt=new Date(iso+'T00:00:00');dt.setDate(dt.getDate()+n);return dt.toISOString().slice(0,10);}
  function fmt(iso){var p=iso.split('-');return p[2]+'-'+MES[parseInt(p[1],10)];}
  function diff(a,b){return Math.round((new Date(a+'T00:00:00')-new Date(b+'T00:00:00'))/86400000);}
+ function base(orden){return String(orden).replace(/-\d+$/,'');}
  var HOY=d.hoy;
- // items programables = OT con pendiente y cuello (estándar). guardamos área.
  var items=d.plan.filter(function(p){return p.pendiente>0 && p.stdCuello;});
  var noProg=d.plan.filter(function(p){return p.pendiente>0 && !p.stdCuello;});
  function cmpV(a,b){return (a.vence||'9999')<(b.vence||'9999')?-1:(a.vence||'9999')>(b.vence||'9999')?1:0;}
@@ -498,43 +498,75 @@ wireMotivos('#meta');
  var MODEL={vencidas:'Vencidas primero',cumplibles:'Las que aún se pueden cumplir',pendiente:'Mayor pendiente primero'};
  var state={mode:'vencidas',smt:2,pth:3};
 
+ // precedencia: 1º programa SMT; el FINAL de una OT no arranca hasta que su SMT termina
  function schedule(){
-  var lines={SMT:Math.max(1,state.smt),PTH:Math.max(1,state.pth)};
-  var cum={SMT:0,PTH:0}, horizon={SMT:0,PTH:0};
-  var sorted=items.slice().sort(MODES[state.mode]);
-  var out=sorted.map(function(p){
-   var area=p.area, hrs=p.pendiente/p.stdCuello, cap=8*lines[area];
-   var startOff=Math.floor(cum[area]/cap); cum[area]+=hrs;
-   var finOff=Math.ceil(cum[area]/cap); horizon[area]=Math.max(horizon[area],finOff);
-   var fin=addDays(HOY,finOff);
-   var tarde=p.vence?diff(fin,p.vence):null;
-   return {p:p,inicia:addDays(HOY,startOff),termina:fin,tarde:tarde};
+  var capS=8*Math.max(1,state.smt), capP=8*Math.max(1,state.pth);
+  var smt=items.filter(function(p){return p.area==='SMT';}).sort(MODES[state.mode]);
+  var pth=items.filter(function(p){return p.area==='PTH';}).sort(MODES[state.mode]);
+  var smtFin={}, cumS=0;
+  var outS=smt.map(function(p){
+   var hrs=p.pendiente/p.stdCuello, startOff=Math.floor(cumS/capS); cumS+=hrs;
+   var finOff=Math.ceil(cumS/capS); smtFin[base(p.orden)]=finOff;
+   return {p:p,inicia:addDays(HOY,startOff),termina:addDays(HOY,finOff),finOff:finOff,tarde:p.vence?diff(addDays(HOY,finOff),p.vence):null,espera:false};
   });
-  var maxOff=Math.max(horizon.SMT,horizon.PTH,0);
-  return {out:out,fin:addDays(HOY,maxOff),dias:maxOff,horizon:horizon,lines:lines};
+  var cumP=0;
+  var outP=pth.map(function(p){
+   var hrs=p.pendiente/p.stdCuello, minHrs=(smtFin[base(p.orden)]||0)*capP, espera=cumP<minHrs;
+   if(espera)cumP=minHrs;                               // espera a que SMT cierre (precedencia)
+   var startOff=Math.floor(cumP/capP); cumP+=hrs;
+   var finOff=Math.ceil(cumP/capP);
+   return {p:p,inicia:addDays(HOY,startOff),termina:addDays(HOY,finOff),finOff:finOff,tarde:p.vence?diff(addDays(HOY,finOff),p.vence):null,espera:espera};
+  });
+  var maxOff=0;outS.concat(outP).forEach(function(x){if(x.finOff>maxOff)maxOff=x.finOff;});
+  return {smt:outS,pth:outP,fin:addDays(HOY,maxOff),dias:maxOff,capS:capS/8,capP:capP/8};
+ }
+
+ // sugerencia HxH mínimo: con 3 líderes, trackear solo el CUELLO de cada área
+ function liderDe(proc){
+  if(['PP_481','PP_520','PP_411_481','PP_421'].indexOf(proc)>=0)return 'SMT';
+  if(['ENSAMBLE_MANUAL','WAVE_SOLDER','SOLDEO_MANUAL','ICT'].indexOf(proc)>=0)return 'PTH';
+  return 'ACAB';
+ }
+ var LIDER={SMT:'SMT — Viridiana',PTH:'PTH — Yadira',ACAB:'Conformal/Empaque'};
+ var PLBL={PP_481:'P&P 481',PP_520:'P&P 520',PP_411_481:'P&P 411-481',PP_421:'P&P 421',ENSAMBLE_MANUAL:'Ensamble Manual',WAVE_SOLDER:'Wave/Ola',SOLDEO_MANUAL:'Soldeo Manual',ICT:'ICT',GRB:'Grabación',CONFORMAL:'Conformal',LIMPIEZA:'Limpieza',FCT:'FCT',ENSAMBLES:'Ensambles',PRUEBA_FCT:'Prueba FCT',EMPAQUE:'Empaque'};
+ function recoHxH(){
+  var rec={SMT:{},PTH:{},ACAB:{}};
+  items.forEach(function(p){if(!p.cuello)return;var L=liderDe(p.cuello);rec[L][p.cuello]=(rec[L][p.cuello]||0)+1;});
+  return ['SMT','PTH','ACAB'].map(function(L){
+   var cu=Object.keys(rec[L]).sort(function(a,b){return rec[L][b]-rec[L][a];});
+   var chips=cu.slice(0,2).map(function(c){return '<span class="chip" style="font-weight:700">'+esc(PLBL[c]||c)+'</span> <span class="muted">cuello en '+rec[L][c]+' OT</span>';}).join(' · ');
+   return '<tr><td><b>'+esc(LIDER[L])+'</b></td><td>'+(chips||'<span class="muted">sin órdenes hoy</span>')+'</td></tr>';
+  }).join('');
  }
 
  function render(){
   var s=schedule();
-  var aTiempo=s.out.filter(function(x){return x.tarde!=null&&x.tarde<=0;}).length;
-  var tarde=s.out.filter(function(x){return x.tarde!=null&&x.tarde>0;}).length;
+  var all=s.smt.concat(s.pth);
+  var aTiempo=all.filter(function(x){return x.tarde!=null&&x.tarde<=0;}).length;
+  var tarde=all.filter(function(x){return x.tarde!=null&&x.tarde>0;}).length;
   var ctrl='<div class="pgctrl">'+Object.keys(MODEL).map(function(k){
     return '<button data-m="'+k+'"'+(state.mode===k?' class="on"':'')+'>'+MODEL[k]+'</button>';}).join('')+
     '<span class="pgcap">Líneas: SMT <input id="pgsmt" type="number" min="1" value="'+state.smt+'"> PTH <input id="pgpth" type="number" min="1" value="'+state.pth+'"></span></div>';
   var head='<div class="pghead"><div class="big">Te pones al corriente: '+fmt(s.fin)+' <span class="l" style="font-weight:500">(~'+s.dias+' días hábiles)</span></div>'+
-    '<div class="l">Estrategia: <b>'+MODEL[state.mode]+'</b> · capacidad SMT '+s.lines.SMT+' / PTH '+s.lines.PTH+' líneas · '+
+    '<div class="l">Estrategia: <b>'+MODEL[state.mode]+'</b> · SMT '+s.capS+' / PTH '+s.capP+' líneas · precedencia SMT→final activa · '+
     '<span style="color:var(--ok)">'+aTiempo+' a tiempo</span> · <span style="color:var(--bad)">'+tarde+' tarde</span></div></div>';
-  var rows=s.out.map(function(x,i){
+  function fila(x,i){
    var p=x.p;
    var vs=x.tarde==null?'<span class="muted">sin fecha</span>':(x.tarde<=0?'<span class="pill p-ok">a tiempo</span>':'<span class="pill p-bad">+'+x.tarde+'d tarde</span>');
    return '<tr'+(x.tarde>0?' class="late"':'')+'><td class="tdimm">'+(i+1)+'</td><td>'+esc(p.orden)+'</td><td>'+esc(p.np||'—')+
-     '</td><td>'+p.area+'</td><td class="num">'+p.pendiente+'</td><td>'+esc(p.cuello||'')+' <span class="muted">@'+(p.stdCuello||'-')+'</span>'+
-     '</td><td>'+fmt(x.inicia)+' → <b>'+fmt(x.termina)+'</b></td><td>'+vs+'</td></tr>';
-  }).join('');
-  var tabla='<div class="card"><table><thead><tr><th>#</th><th>OT</th><th>Parte</th><th>Área</th><th class="num">Pend.</th><th>Cuello</th><th>Inicia → Termina</th><th>Entrega</th></tr></thead><tbody>'+
-    (rows||'<tr><td colspan=8 class="empty">Sin órdenes programables.</td></tr>')+'</tbody></table>'+
+     '</td><td class="num">'+p.pendiente+'</td><td>'+esc(PLBL[p.cuello]||p.cuello||'')+' <span class="muted">@'+(p.stdCuello||'-')+'</span>'+
+     '</td><td>'+fmt(x.inicia)+' → <b>'+fmt(x.termina)+'</b>'+(x.espera?' <span class="muted">(espera SMT)</span>':'')+'</td><td>'+vs+'</td></tr>';
+  }
+  function seccion(titulo,arr){
+   return '<div class="subhd">'+titulo+'</div><table><thead><tr><th>#</th><th>OT</th><th>Parte</th><th class="num">Pend.</th><th>Cuello</th><th>Inicia → Termina</th><th>Entrega</th></tr></thead><tbody>'+
+     (arr.map(fila).join('')||'<tr><td colspan=7 class="empty">—</td></tr>')+'</tbody></table>';
+  }
+  var tabla='<div class="card">'+seccion('1) SMT — subensamble',s.smt)+seccion('2) Final (PTH → Empaque) — arranca al cerrar su SMT',s.pth)+
     (noProg.length?'<div class="warn warn2" style="margin-top:10px"><b>⚠ '+noProg.length+' OT no se pueden programar</b> (sin estándar): '+noProg.map(function(p){return esc(p.orden);}).join(', ')+'. Captúralas en el tab Estándar.</div>':'')+'</div>';
-  $('prog').innerHTML='<div class="muted" style="margin-bottom:10px">Acomoda el atraso con cada estrategia y mira a qué día llegas. Ajusta las líneas según cuántas corran en paralelo. Día hábil = 8 h productivas.</div>'+ctrl+head+tabla;
+  var reco='<div class="card"><h2>Control con 3 líderes — HxH mínimo sugerido</h2>'+
+    '<div class="muted" style="margin-bottom:8px">En vez de 15 tableros, cada líder trackea el <b>cuello de su área</b> (la estación que marca el ritmo). Lo demás se deduce.</div>'+
+    '<table><thead><tr><th>Líder / área</th><th>Tablero(s) clave a capturar</th></tr></thead><tbody>'+recoHxH()+'</tbody></table></div>';
+  $('prog').innerHTML='<div class="muted" style="margin-bottom:10px">Acomoda el atraso con cada estrategia y mira a qué día llegas. Ajusta las líneas según cuántas corran en paralelo. El final de una OT arranca al cerrar su SMT.</div>'+ctrl+head+reco+tabla;
   Array.prototype.forEach.call($('prog').querySelectorAll('.pgctrl button'),function(b){b.onclick=function(){state.mode=b.getAttribute('data-m');render();};});
   var si=$('pgsmt'),pi=$('pgpth');
   if(si)si.onchange=function(){state.smt=parseInt(si.value,10)||1;render();};
