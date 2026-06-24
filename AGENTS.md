@@ -615,7 +615,85 @@ Jorge Ramírez (dirección) — todos con `consentimiento=true`. **Scheduler ACT
 > contra la BD real vía `/pg/query`. **Deploy pendiente** (Daniel/Director): `dash` `ng4loQv932n2AIRC`
 > y `panel` `4sJAO9urzrgQowJB`. El bot NO se tocó.
 
+### ✅ Estándar x Hora + OT en proceso → BD normalizada (2026-06-23, sql/025)
+Origen: sesión Juan↔Nayeli (Almacén Mapartel). Se migraron 2 Excel a `horacio.*`:
+- **`partes`** (164) — catálogo de tarjetas; clave `(numero_parte, no_parte_ensamble)`,
+  `numero_parte` normalizado (UPPER, sin sufijo `_SMT`) para cruzar contra OT.
+- **`estandar_proceso`** (1072) — estándar por hora NORMALIZADO: 1 fila por parte×estación,
+  `std_hr` + `pzs_turno` + `atributos` jsonb. 15 estaciones: PP_481/520/411_481/421,
+  ENSAMBLE_MANUAL, WAVE_SOLDER, SOLDEO_MANUAL, ICT, GRB, CONFORMAL, LIMPIEZA, FCT,
+  ENSAMBLES, PRUEBA_FCT, EMPAQUE. (El Excel original tiene 68 col / 3 filas de header.)
+- **`ordenes_trabajo`** (39, snapshot `2026-06-23`) — OT en proceso. Cada OT entra como
+  `estado_nexia='propuesta'`; Dirección la pasa a `aprobada`/`muerta` (+`motivo_muerte`,
+  p.ej. "falta de material") o `cerrada`. Partida `-01`=producto final, `-02`/`-03`=SMT
+  (subensamble); `es_smt` derivado. UNIQUE `(orden_trabajo, fecha_snapshot)` → re-cargas UPSERT
+  sin pisar el `estado_nexia` que fijó Dirección.
+- **Vista `v_ot_inconsistencias`** — flags por OT: `sin_estandar`, `fecha_invalida`
+  (vence<orden), `vencida_incompleta`, `pendiente`.
+
+Inconsistencias del 1er snapshot: **15 OT sin estándar usable · 2 fecha imposible · 23 vencidas**.
+Matiz: varias "sin estándar" SÍ están en el catálogo pero con la fila vacía (de las ~39
+"PENDIENTE VALIDAR ESTÁNDAR" del Excel) — distinto de las que ni existen.
+Loader idempotente: `scripts/import_estandar_ot.py "<estandar.xlsx>" "<ot.xlsx>" <YYYY-MM-DD>`.
+
+**Pendiente (Track R3-HDB2-07 — meta automática):** ligar OT→estándar para que la meta por
+hora salga sola del número de parte (hoy Daniel la teclea en `/orden`). Para las partidas SMT
+cuyo `numero_parte` es un nombre (ANDROMEDA, BLE COMM 2, SENSOR VELOCIDAD, FOCARIS), derivar
+el estándar vía el hermano `-01` del mismo `orden_base` (que sí trae PN real en catálogo).
+
+### ✅ Fase 2 V2 — Meta automática OT→estándar (panel de prueba) (2026-06-23, sql/026)
+"Que la meta salga sola". **Aislado de Daniel**: SOLO LECTURA, no escribe en `ordenes_tablero`.
+- **`linea_proceso`** — mapea cada tablero HxH a su estación del estándar (SMT_520→PP_520,
+  PTH→ENSAMBLE_MANUAL, OLA→WAVE_SOLDER, SOLDEO→SOLDEO_MANUAL, ICT→ICT, CONFORMAL_*→CONFORMAL,
+  CONF_GRAB→GRB, CONF_EMP→EMPAQUE, CONF_PRU/FCT_*→FCT…). Líneas sin estación (grabación SMT,
+  arnés, pasta, embarques) NO se mapean → sin auto-meta (honesto). #revisar: `SMT_411481→PP_411_481`
+  y `CONF_PRU→FCT` son los menos seguros.
+- **`meta_sugerida(np, proceso)`** — piezas/hr del estándar (promedia variantes de ensamble).
+- **`v_ot_parte`** — resuelve parte EFECTIVA: si la fila `-02` SMT tiene nombre (ANDROMEDA…)
+  sin estándar propio, usa el hermano `-01` del mismo `orden_base`.
+- **`v_ot_meta`** — por OT, meta sugerida por estación + tableros HxH asociados.
+- **`v_meta_validacion`** — lo que Daniel teclea (ordenes_tablero vigente) vs estándar.
+  Puente del `orden` corto: `'0605' = right(orden_base,4)`.
+
+**Prueba contundente:** en Andromeda G8, **8 metas que Daniel tecleó a mano = el estándar exacto**
+(PTH 265, OLA 256, ICT 312, Soldeo 170, Conformal 142, Grabación 260, Empaque 320). En TJ360
+tecleó placeholders "100" donde el estándar real es 167/120/107 → el panel lo expone.
+
+**Panel:** workflow n8n **`Horacio V2`** (`jVWVm7tDoxsO1kbw`), Webhook GET `/horacio-v2`,
+fuente `n8n/horacio-v2.code.js`. Token = `DASH_TOKEN` (reusado). 3 pestañas: Meta automática
+por OT · Validación vs Daniel · Inconsistencias. **Inactivo** → Daniel/Juan lo activa en la UI.
+URL: `https://n8n.nexiasoluciones.com.mx/webhook/horacio-v2?token=<DASH_TOKEN>`.
+Verificado local (render + screenshot headless) antes de activar.
+**Pendiente para cablear a producción:** validar mapeo `linea_proceso` con Juan, luego auto-sugerir
+la meta en `/orden` del bot (hoy Daniel teclea; V2 confirma que el número correcto está en BD).
+
+#### + Plan del día / propuesta vs estándar (2026-06-23, sql/027)
+Vista **`v_plan_dia`**: por OT (separada **SMT** -02/-03 vs **PTH/final** -01) calcula la
+**estación cuello de botella** (menor std_hr de la ruta del área), `capacidad_dia = std_cuello×8h`,
+`dias_necesarios = ceil(pend/cap_dia)`, `dias_a_vencer`, `plan_diario_cumplir = ceil(pend/dias_a_vencer)`
+y **`factible`** (¿alcanza antes de vencer?). Responde "¿por qué tardas en cerrar una orden?".
+Panel V2: pestaña **"Plan del día"** (default), tablas SMT/PTH + KPI "factibles a tiempo".
+Hallazgo de datos: muchas OT ya vencidas (días negativos → no factible); algunos cuellos con std
+muy bajo (p.ej. FCT TJ000255 @28/hr) podrían ser estándar dudoso del Excel #revisar.
+
+#### + Warning + comentario dentro de la orden (2026-06-23, sql/028)
+Columna `ordenes_trabajo.comentario` (libre; en Fase 3 lo captura manufactura). El panel muestra
+las inconsistencias COMO warning dentro de cada orden: badges inline (Sin estándar / Fecha imposible
+/ Vencida / No alcanza / Completa) + al expandir, el mensaje explicativo en voz de Horacio + el
+comentario. Gotcha resuelto: `onclick` inline con `\'` se colapsa dentro del template literal y rompe
+el JS del navegador → usar handler delegado (`querySelectorAll(...).onclick`). El doble `node --check`
+NO lo cazó (revisa el código pre-evaluación); validar con **mock-DOM sobre el HTML ya servido**.
+
 ### ⏳ Siguientes (al 2026-06-23)
+- [ ] **(Fase 3) Captura directa por manufactura + escritura V2:** habilitar el POST del workflow
+  `Horacio V2` (toggle off/on en la UI para registrar el webhook POST) → el selector de motivo
+  ya guarda. Extender a capturar avance/cantidad terminada por OT (cierra el loop, sin importar Excel).
+- [ ] **(Fase 3) Warning de posible captura errónea por estación:** cuando una estación reporta
+  muchas más/menos piezas que la de aguas arriba (caso empaque 495 vs embarque 2066 que vio Juan),
+  marcar "posible captura errónea". Check de consistencia entre estaciones de la misma ruta. (No quedó en Fase 2.)
+- [ ] **(Fase 3) Flujo "víbora" + sincronización gráfica:** la planta corre como víbora — lo que
+  cierra el martes arranca el siguiente día. Falta sincronizar el avance entre días/estaciones;
+  en Fase 3 hacerlo de forma **gráfica** (visualizar el flujo continuo, empatar cierres con arranques).
 - [ ] **(R3-HDB2-09) Dedupe tableros de Chío:** 18 activos con duplicados (FCT/Ensamble/Grabación)
   del re-import 19-jun. Definir con Daniel cuál set conservar + fijar tope por líder (~4–6).
 - [ ] **(R3-HDB2-05) Refinar causas:** agregar "liberación de máquina" (Calidad), englobar, acotar
