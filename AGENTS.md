@@ -685,9 +685,11 @@ el JS del navegador → usar handler delegado (`querySelectorAll(...).onclick`).
 NO lo cazó (revisa el código pre-evaluación); validar con **mock-DOM sobre el HTML ya servido**.
 
 ### ⏳ Siguientes (al 2026-06-23)
-- [ ] **(Fase 3) Captura directa por manufactura + escritura V2:** habilitar el POST del workflow
-  `Horacio V2` (toggle off/on en la UI para registrar el webhook POST) → el selector de motivo
-  ya guarda. Extender a capturar avance/cantidad terminada por OT (cierra el loop, sin importar Excel).
+- [x] **Escritura V2 (selector de motivo) operativa** ✅ — POST `/horacio-v2` con catálogo cerrado
+  (falta_material/personal/maquina/otros). Causa raíz del 404: el nodo webhook POST agregado por
+  API quedó **sin `webhookId`** → n8n no registra el método; se le puso uno y se reactivó.
+- [ ] **(Fase 3) Captura directa por manufactura:** extender la escritura V2 a **avance/cantidad
+  terminada** por OT (cierra el loop, sin importar Excel) + quién/cuándo (trazabilidad).
 - [ ] **(Fase 3) Warning de posible captura errónea por estación:** cuando una estación reporta
   muchas más/menos piezas que la de aguas arriba (caso empaque 495 vs embarque 2066 que vio Juan),
   marcar "posible captura errónea". Check de consistencia entre estaciones de la misma ruta. (No quedó en Fase 2.)
