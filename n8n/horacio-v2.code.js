@@ -58,6 +58,32 @@ if (isPost) {
     await pg("INSERT INTO horacio.estandar_proceso(parte_id,proceso,std_hr) VALUES('" + pid + "','" + proceso + "'," + v + ") ON CONFLICT (parte_id,proceso) DO UPDATE SET std_hr=EXCLUDED.std_hr");
     return J({ ok: true, std: v });
   }
+  if (body.action === 'lanzar_programa') {
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (!items.length) return J({ ok: false, error: 'programa vacío' });
+    if (items.length > 500) return J({ ok: false, error: 'demasiadas órdenes' });
+    const num = (x) => { const n = Number(x); return (x === '' || x === null || x === undefined || !isFinite(n)) ? 'NULL' : String(n); };
+    const dat = (x) => (/^\d{4}-\d{2}-\d{2}$/.test(String(x || '')) ? "'" + x + "'" : 'NULL');
+    const txt = (x) => (x === null || x === undefined || x === '' ? 'NULL' : "'" + sql(String(x)) + "'");
+    for (const it of items) {
+      if (['SMT', 'PTH'].indexOf(String(it.area)) < 0) return J({ ok: false, error: 'área inválida' });
+      if (!String(it.orden_trabajo || '').trim()) return J({ ok: false, error: 'falta orden_trabajo' });
+    }
+    const est = ['vencidas', 'cumplibles', 'pendiente', 'manual'].indexOf(String(body.estrategia_base)) >= 0 ? String(body.estrategia_base) : 'manual';
+    await pg("UPDATE horacio.programa_oficial SET vigente=false WHERE vigente");
+    const ins = await pg(
+      "INSERT INTO horacio.programa_oficial(estrategia_base,lineas_smt,lineas_pth,fecha_meta,dias_habiles,nota,vigente) VALUES(" +
+      "'" + est + "'," + num(body.lineas_smt) + "," + num(body.lineas_pth) + "," + dat(body.fecha_meta) + "," +
+      num(body.dias_habiles) + "," + txt(body.nota) + ",true) RETURNING id");
+    const pid = ins[0].id;
+    const vals = items.map((it, i) =>
+      "('" + pid + "','" + it.area + "'," + (Number(it.posicion) || (i + 1)) + "," + txt(it.orden_trabajo) + "," +
+      txt(it.numero_parte) + "," + txt(it.descripcion) + "," + num(it.pendiente) + "," + txt(it.proceso_cuello) + "," +
+      num(it.std_cuello) + "," + dat(it.inicia) + "," + dat(it.termina) + "," + num(it.tarde_dias) + "," + (it.espera_smt ? 'true' : 'false') + ")"
+    ).join(',');
+    await pg("INSERT INTO horacio.programa_oficial_ot(programa_id,area,posicion,orden_trabajo,numero_parte,descripcion,pendiente,proceso_cuello,std_cuello,inicia,termina,tarde_dias,espera_smt) VALUES " + vals);
+    return J({ ok: true, id: pid, n: items.length });
+  }
   return J({ ok: false, error: 'acción desconocida' });
 }
 
@@ -95,6 +121,12 @@ const estPartRows = await pg(
 const estValRows = await pg(
   "SELECT p.numero_parte, e.proceso, round(avg(e.std_hr),1) AS std " +
   "FROM horacio.partes p JOIN horacio.estandar_proceso e ON e.parte_id=p.id GROUP BY p.numero_parte, e.proceso");
+const progRows = await pg(
+  "SELECT id,creado_ts,estrategia_base,lineas_smt,lineas_pth,fecha_meta,dias_habiles,nota " +
+  "FROM horacio.programa_oficial WHERE vigente ORDER BY creado_ts DESC LIMIT 1");
+const progOtRows = (progRows && progRows.length) ? await pg(
+  "SELECT area,posicion,orden_trabajo,numero_parte,descripcion,pendiente,proceso_cuello,std_cuello,inicia,termina,tarde_dias,espera_smt " +
+  "FROM horacio.programa_oficial_ot WHERE programa_id='" + progRows[0].id + "' ORDER BY area,posicion") : [];
 
 // agrupar v_ot_meta por OT
 const otMap = {};
@@ -154,6 +186,18 @@ const vibOt = vibOtRows.map((r) => ({
 const estParts = estPartRows.map((r) => ({
   np: r.numero_parte, desc: r.descripcion, nstd: N(r.nstd) || 0, enOt: !!r.en_ot
 }));
+const progOficial = (progRows && progRows.length) ? {
+  id: progRows[0].id,
+  creado: String(progRows[0].creado_ts || '').slice(0, 16).replace('T', ' '),
+  estrategia: progRows[0].estrategia_base, nota: progRows[0].nota,
+  lineasSmt: N(progRows[0].lineas_smt), lineasPth: N(progRows[0].lineas_pth),
+  fechaMeta: progRows[0].fecha_meta, dias: N(progRows[0].dias_habiles),
+  ots: progOtRows.map((r) => ({
+    area: r.area, pos: N(r.posicion), orden: r.orden_trabajo, np: r.numero_parte, desc: r.descripcion,
+    pendiente: N(r.pendiente) || 0, cuello: r.proceso_cuello, stdCuello: N(r.std_cuello),
+    inicia: r.inicia, termina: r.termina, tarde: N(r.tarde_dias), espera: !!r.espera_smt
+  }))
+} : null;
 const estMap = {};
 for (const r of estValRows) {
   (estMap[r.numero_parte] = estMap[r.numero_parte] || {})[r.proceso] = N(r.std);
@@ -162,7 +206,7 @@ for (const r of estValRows) {
 const DATA = {
   generado: new Date().toISOString().slice(0, 16).replace('T', ' '),
   hoy: new Date().toISOString().slice(0, 10),
-  ots, val, inc, plan, comentarios, motivos, vibDia, vibOt, estParts, estMap,
+  ots, val, inc, plan, comentarios, motivos, vibDia, vibOt, estParts, estMap, progOficial,
   resumen: {
     otTotal: inc.length, otConMeta: ots.length,
     sinEst: inc.filter((x) => x.sinEst).length,
@@ -254,6 +298,12 @@ tr.det td{background:#fafafa;padding:4px 14px 12px}
 .pghead .l{color:var(--mut);font-size:12.5px;margin-top:3px}
 tr.late td{background:#fef2f2}
 .subhd{font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px}
+tr.prow td.drag{cursor:grab;color:#a1a1aa;font-size:14px;width:24px;text-align:center;user-select:none;letter-spacing:-2px}
+tr.prow td.drag:active{cursor:grabbing}
+tr.prow.dragging{opacity:.4}
+tr.prow.drop-into td{border-top:2px solid var(--accent)}
+button.lanzar{border:1px solid var(--ok);background:var(--ok);color:#fff;border-radius:99px;padding:9px 18px;font-size:13.5px;font-weight:700;cursor:pointer}
+button.lanzar:hover{filter:brightness(.96)}
 </style></head><body>
 <header><h1>Horacio <span class="dot">V2</span> · Meta automática</h1><span class="sub" id="sub"></span></header>
 <div class="wrap">
@@ -496,13 +546,28 @@ wireMotivos('#meta');
   pendiente:function(a,b){return b.pendiente-a.pendiente;}
  };
  var MODEL={vencidas:'Vencidas primero',cumplibles:'Las que aún se pueden cumplir',pendiente:'Mayor pendiente primero'};
- var state={mode:'vencidas',smt:2,pth:3};
+ var state={mode:'vencidas',smt:2,pth:3,order:{SMT:null,PTH:null}};
+
+ // orden efectivo de un área: manual (drag) si existe, si no la estrategia
+ function ordered(area){
+  var arr=items.filter(function(p){return p.area===area;});
+  var ord=state.order[area];
+  if(ord){
+   var idx={};ord.forEach(function(o,i){idx[o]=i;});
+   arr.sort(function(a,b){
+    var ia=idx[a.orden],ib=idx[b.orden];
+    if(ia==null&&ib==null)return MODES[state.mode](a,b);
+    if(ia==null)return 1; if(ib==null)return -1; return ia-ib;
+   });
+  } else { arr.sort(MODES[state.mode]); }
+  return arr;
+ }
 
  // precedencia: 1º programa SMT; el FINAL de una OT no arranca hasta que su SMT termina
  function schedule(){
   var capS=8*Math.max(1,state.smt), capP=8*Math.max(1,state.pth);
-  var smt=items.filter(function(p){return p.area==='SMT';}).sort(MODES[state.mode]);
-  var pth=items.filter(function(p){return p.area==='PTH';}).sort(MODES[state.mode]);
+  var smt=ordered('SMT');
+  var pth=ordered('PTH');
   var smtFin={}, cumS=0;
   var outS=smt.map(function(p){
    var hrs=p.pendiente/p.stdCuello, startOff=Math.floor(cumS/capS); cumS+=hrs;
@@ -539,38 +604,132 @@ wireMotivos('#meta');
   }).join('');
  }
 
+ function modeLbl(m){return MODEL[m]||(m==='manual'?'Orden manual':m);}
+
+ // --- card del programa oficial vigente (foto congelada en BD) ---
+ function vigenteCard(){
+  var pf=d.progOficial;
+  if(!pf) return '<div class="card"><h2>Programa oficial</h2><div class="empty">Aún no hay programa oficial. Acomoda el orden abajo (arrastra ≡) y dale <b>Lanzar</b>.</div></div>';
+  var byA={SMT:[],PTH:[]};pf.ots.forEach(function(o){if(byA[o.area])byA[o.area].push(o);});
+  function sec(t,arr){
+   if(!arr.length)return '';
+   return '<div class="subhd">'+t+'</div><table><thead><tr><th>#</th><th>OT</th><th>Parte</th><th class="num">Pend.</th><th>Cuello</th><th>Inicia → Termina</th><th>Entrega</th></tr></thead><tbody>'+
+    arr.map(function(o){
+     var vs=o.tarde==null?'<span class="muted">—</span>':(o.tarde<=0?'<span class="pill p-ok">a tiempo</span>':'<span class="pill p-bad">+'+o.tarde+'d</span>');
+     return '<tr'+(o.tarde>0?' class="late"':'')+'><td>'+o.pos+'</td><td>'+esc(o.orden)+'</td><td>'+esc(o.np||'—')+'</td><td class="num">'+o.pendiente+'</td><td>'+esc(PLBL[o.cuello]||o.cuello||'')+'</td><td>'+(o.inicia?fmt(o.inicia):'—')+' → <b>'+(o.termina?fmt(o.termina):'—')+'</b></td><td>'+vs+'</td></tr>';
+    }).join('')+'</tbody></table>';
+  }
+  return '<div class="card" style="border-color:#a7f3d0;background:#f0fdf4">'+
+    '<h2 style="color:#065f46">✓ Programa oficial vigente</h2>'+
+    '<div class="pghead" style="background:#fff;border-color:#a7f3d0;margin-bottom:12px"><div class="big" style="color:#065f46">Meta de entrega: '+(pf.fechaMeta?fmt(pf.fechaMeta):'—')+(pf.dias!=null?' <span class="l" style="font-weight:500">(~'+pf.dias+' días hábiles)</span>':'')+'</div>'+
+    '<div class="l">Estrategia base: <b>'+esc(modeLbl(pf.estrategia))+'</b> · SMT '+(pf.lineasSmt||'-')+' / PTH '+(pf.lineasPth||'-')+' líneas · lanzado '+esc(pf.creado)+'</div></div>'+
+    sec('SMT — subensamble',byA.SMT)+sec('Final (PTH → Empaque)',byA.PTH)+'</div>';
+ }
+
+ function rowToItem(x,area,pos){
+  var p=x.p;
+  return {area:area,posicion:pos,orden_trabajo:p.orden,numero_parte:p.np,descripcion:p.desc,
+    pendiente:p.pendiente,proceso_cuello:p.cuello,std_cuello:p.stdCuello,
+    inicia:x.inicia,termina:x.termina,tarde_dias:x.tarde,espera_smt:!!x.espera};
+ }
+ function esManual(){return !!(state.order.SMT||state.order.PTH);}
+
+ function lanzar(){
+  var s=schedule(), msg=$('pglmsg');
+  if(msg){msg.textContent='lanzando…';msg.style.color='';}
+  var its=[];
+  s.smt.forEach(function(x,i){its.push(rowToItem(x,'SMT',i+1));});
+  s.pth.forEach(function(x,i){its.push(rowToItem(x,'PTH',i+1));});
+  api({action:'lanzar_programa',estrategia_base:esManual()?'manual':state.mode,
+    lineas_smt:state.smt,lineas_pth:state.pth,fecha_meta:s.fin,dias_habiles:s.dias,items:its})
+  .then(function(r){
+   if(r&&r.ok){
+    if(msg){msg.textContent='✓ programa oficial lanzado ('+r.n+' OT)';msg.style.color='var(--ok)';}
+    d.progOficial={id:r.id,creado:d.generado,estrategia:esManual()?'manual':state.mode,
+      lineasSmt:state.smt,lineasPth:state.pth,fechaMeta:s.fin,dias:s.dias,
+      ots:its.map(function(it){return {area:it.area,pos:it.posicion,orden:it.orden_trabajo,np:it.numero_parte,desc:it.descripcion,pendiente:it.pendiente,cuello:it.proceso_cuello,stdCuello:it.std_cuello,inicia:it.inicia,termina:it.termina,tarde:it.tarde_dias,espera:it.espera_smt};})};
+    render();
+   } else { if(msg){msg.textContent=(r&&r.error)||'error';msg.style.color='var(--bad)';} }
+  }).catch(function(){if(msg){msg.textContent='error de red';msg.style.color='var(--bad)';}});
+ }
+
+ // reordenar un área: mueve "from" justo ANTES de "to"
+ function reorder(area,from,to){
+  var arr=ordered(area).map(function(p){return p.orden;});
+  var fi=arr.indexOf(from); if(fi<0)return;
+  arr.splice(fi,1);
+  var ti=arr.indexOf(to); if(ti<0)ti=arr.length;
+  arr.splice(ti,0,from);
+  state.order[area]=arr;
+  render();
+ }
+ function wireDrag(){
+  var dragEl=null;
+  Array.prototype.forEach.call($('prog').querySelectorAll('tr.prow'),function(tr){
+   tr.ondragstart=function(e){dragEl=tr;tr.classList.add('dragging');if(e.dataTransfer){e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',tr.getAttribute('data-orden'));}catch(_){}}};
+   tr.ondragend=function(){tr.classList.remove('dragging');Array.prototype.forEach.call($('prog').querySelectorAll('tr.prow'),function(r){r.classList.remove('drop-into');});dragEl=null;};
+   tr.ondragover=function(e){
+    if(!dragEl||dragEl===tr)return;
+    if(dragEl.getAttribute('data-area')!==tr.getAttribute('data-area'))return;
+    e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='move';tr.classList.add('drop-into');
+   };
+   tr.ondragleave=function(){tr.classList.remove('drop-into');};
+   tr.ondrop=function(e){
+    if(!dragEl||dragEl===tr)return;
+    var area=dragEl.getAttribute('data-area');
+    if(area!==tr.getAttribute('data-area'))return;
+    e.preventDefault();
+    reorder(area,dragEl.getAttribute('data-orden'),tr.getAttribute('data-orden'));
+   };
+  });
+ }
+
  function render(){
   var s=schedule();
   var all=s.smt.concat(s.pth);
   var aTiempo=all.filter(function(x){return x.tarde!=null&&x.tarde<=0;}).length;
   var tarde=all.filter(function(x){return x.tarde!=null&&x.tarde>0;}).length;
   var ctrl='<div class="pgctrl">'+Object.keys(MODEL).map(function(k){
-    return '<button data-m="'+k+'"'+(state.mode===k?' class="on"':'')+'>'+MODEL[k]+'</button>';}).join('')+
+    return '<button data-m="'+k+'"'+(state.mode===k&&!esManual()?' class="on"':'')+'>'+MODEL[k]+'</button>';}).join('')+
+    (esManual()?'<button data-m="reset" class="on" style="background:var(--warn);border-color:var(--warn)">Orden manual ✎ (reiniciar)</button>':'')+
     '<span class="pgcap">Líneas: SMT <input id="pgsmt" type="number" min="1" value="'+state.smt+'"> PTH <input id="pgpth" type="number" min="1" value="'+state.pth+'"></span></div>';
   var head='<div class="pghead"><div class="big">Te pones al corriente: '+fmt(s.fin)+' <span class="l" style="font-weight:500">(~'+s.dias+' días hábiles)</span></div>'+
-    '<div class="l">Estrategia: <b>'+MODEL[state.mode]+'</b> · SMT '+s.capS+' / PTH '+s.capP+' líneas · precedencia SMT→final activa · '+
+    '<div class="l">Estrategia: <b>'+(esManual()?'Orden manual':MODEL[state.mode])+'</b> · SMT '+s.capS+' / PTH '+s.capP+' líneas · precedencia SMT→final activa · '+
     '<span style="color:var(--ok)">'+aTiempo+' a tiempo</span> · <span style="color:var(--bad)">'+tarde+' tarde</span></div></div>';
+  var launch='<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
+    '<button id="pglanzar" class="lanzar">🚀 Lanzar como programa oficial</button>'+
+    '<span id="pglmsg" class="muted"></span>'+
+    '<span class="muted" style="margin-left:auto;font-size:12px;max-width:340px">Congela este orden y fechas como referencia oficial. No toca el flujo de Daniel (bot/dashboard).</span></div>';
   function fila(x,i){
    var p=x.p;
    var vs=x.tarde==null?'<span class="muted">sin fecha</span>':(x.tarde<=0?'<span class="pill p-ok">a tiempo</span>':'<span class="pill p-bad">+'+x.tarde+'d tarde</span>');
-   return '<tr'+(x.tarde>0?' class="late"':'')+'><td class="tdimm">'+(i+1)+'</td><td>'+esc(p.orden)+'</td><td>'+esc(p.np||'—')+
+   return '<tr class="prow'+(x.tarde>0?' late':'')+'" draggable="true" data-orden="'+esc(p.orden)+'" data-area="'+esc(p.area)+'">'+
+     '<td class="drag" title="Arrastra para reordenar">⠿</td><td class="tdimm">'+(i+1)+'</td><td>'+esc(p.orden)+'</td><td>'+esc(p.np||'—')+
      '</td><td class="num">'+p.pendiente+'</td><td>'+esc(PLBL[p.cuello]||p.cuello||'')+' <span class="muted">@'+(p.stdCuello||'-')+'</span>'+
      '</td><td>'+fmt(x.inicia)+' → <b>'+fmt(x.termina)+'</b>'+(x.espera?' <span class="muted">(espera SMT)</span>':'')+'</td><td>'+vs+'</td></tr>';
   }
-  function seccion(titulo,arr){
-   return '<div class="subhd">'+titulo+'</div><table><thead><tr><th>#</th><th>OT</th><th>Parte</th><th class="num">Pend.</th><th>Cuello</th><th>Inicia → Termina</th><th>Entrega</th></tr></thead><tbody>'+
-     (arr.map(fila).join('')||'<tr><td colspan=7 class="empty">—</td></tr>')+'</tbody></table>';
+  function seccion(titulo,arr,area){
+   return '<div class="subhd">'+titulo+'</div><table><thead><tr><th></th><th>#</th><th>OT</th><th>Parte</th><th class="num">Pend.</th><th>Cuello</th><th>Inicia → Termina</th><th>Entrega</th></tr></thead><tbody data-area="'+area+'">'+
+     (arr.map(fila).join('')||'<tr><td colspan=8 class="empty">—</td></tr>')+'</tbody></table>';
   }
-  var tabla='<div class="card">'+seccion('1) SMT — subensamble',s.smt)+seccion('2) Final (PTH → Empaque) — arranca al cerrar su SMT',s.pth)+
+  var tabla='<div class="card"><div class="muted" style="margin-bottom:8px">Arrastra <b>⠿</b> para subir/bajar prioridad dentro de cada sección. Las fechas se recalculan al soltar.</div>'+
+    seccion('1) SMT — subensamble',s.smt,'SMT')+seccion('2) Final (PTH → Empaque) — arranca al cerrar su SMT',s.pth,'PTH')+
     (noProg.length?'<div class="warn warn2" style="margin-top:10px"><b>⚠ '+noProg.length+' OT no se pueden programar</b> (sin estándar): '+noProg.map(function(p){return esc(p.orden);}).join(', ')+'. Captúralas en el tab Estándar.</div>':'')+'</div>';
   var reco='<div class="card"><h2>Control con 3 líderes — HxH mínimo sugerido</h2>'+
     '<div class="muted" style="margin-bottom:8px">En vez de 15 tableros, cada líder trackea el <b>cuello de su área</b> (la estación que marca el ritmo). Lo demás se deduce.</div>'+
     '<table><thead><tr><th>Líder / área</th><th>Tablero(s) clave a capturar</th></tr></thead><tbody>'+recoHxH()+'</tbody></table></div>';
-  $('prog').innerHTML='<div class="muted" style="margin-bottom:10px">Acomoda el atraso con cada estrategia y mira a qué día llegas. Ajusta las líneas según cuántas corran en paralelo. El final de una OT arranca al cerrar su SMT.</div>'+ctrl+head+reco+tabla;
-  Array.prototype.forEach.call($('prog').querySelectorAll('.pgctrl button'),function(b){b.onclick=function(){state.mode=b.getAttribute('data-m');render();};});
+  $('prog').innerHTML=vigenteCard()+'<div class="muted" style="margin-bottom:10px">Elige una estrategia como punto de partida, arrastra para afinar, y cuando quede dale <b>Lanzar como programa oficial</b>. El final de una OT arranca al cerrar su SMT.</div>'+ctrl+head+launch+tabla+reco;
+  Array.prototype.forEach.call($('prog').querySelectorAll('.pgctrl button'),function(b){b.onclick=function(){
+   var m=b.getAttribute('data-m');
+   if(m==='reset'){state.order={SMT:null,PTH:null};}
+   else{state.mode=m;state.order={SMT:null,PTH:null};}
+   render();
+  };});
   var si=$('pgsmt'),pi=$('pgpth');
   if(si)si.onchange=function(){state.smt=parseInt(si.value,10)||1;render();};
   if(pi)pi.onchange=function(){state.pth=parseInt(pi.value,10)||1;render();};
+  var lb=$('pglanzar'); if(lb)lb.onclick=lanzar;
+  wireDrag();
  }
  render();
 })();

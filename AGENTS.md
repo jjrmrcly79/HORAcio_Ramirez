@@ -726,6 +726,30 @@ Tab **"Programa"** en el panel V2 — para que Daniel/equipo **jueguen** con la 
   marca el ritmo, por frecuencia en las OT) → 1–2 tableros por líder en vez de 15. `liderDe(proceso)`
   mapea estación→área. Calculado de `v_plan_dia`.
 
+### ✅ Programa oficial — drag & drop + lanzar como oficial (2026-06-24, sql/033)
+Sobre el tab "Programa": Dirección **reordena las OT arrastrándolas con el mouse** (override de la
+estrategia) y con un botón **"Lanzar como programa oficial"** congela ese orden + fechas como
+referencia vigente. Decisión: **referencia congelada** (no toca `ordenes_tablero` ni el flujo de
+Daniel) + **drag dentro de cada sección** (SMT / Final por separado, respeta precedencia SMT→final).
+- **BD (sql/033):** `programa_oficial` (maestro: estrategia_base, lineas_smt/pth, fecha_meta,
+  dias_habiles, nota, **vigente**) + `programa_oficial_ot` (detalle congelado: area CHECK(SMT|PTH),
+  posicion, orden_trabajo, parte, pendiente, cuello, std, inicia, termina, tarde_dias, espera_smt).
+  Vista `v_programa_vigente`. RLS service_role. Cada lanzamiento marca `vigente=false` el anterior
+  (versionado, queda histórico) — verificado: 2 lanzamientos → 1 vigente.
+- **POST `lanzar_programa`** (token-gated): valida items no vacío (≤500), area ∈ (SMT,PTH),
+  orden_trabajo no vacío; UPDATE vigente=false + INSERT maestro RETURNING id + INSERT N detalle.
+  Sanitiza num/date/text. Rechaza área inválida sin escribir (probado en vivo).
+- **Cliente:** `state.order{SMT,PTH}` = orden manual (null = estrategia). `ordered(area)` aplica el
+  orden manual o la estrategia. Drag HTML5 nativo (handle ⠿, `draggable` por fila), `reorder()`
+  mueve "from" antes de "to" → `render()` recalcula fechas con el mismo scheduler. Botón estrategia
+  resetea a auto; badge "Orden manual ✎ (reiniciar)" cuando hay override. Card **"Programa oficial
+  vigente"** (lee `progOficial` del GET) arriba del tab. "Lanzar" arma el payload del `schedule()`
+  actual y POSTea; estrategia_base='manual' si hubo drag.
+- **Validación (regla MEMORY):** doble `node --check` (archivo envuelto + script navegador extraído)
+  + **mock-DOM** sobre el HTML servido (15 asserts: render arrastrable, drag→reorder→recalcula,
+  lanzar→payload+card vigente). Gotcha cazado por el check del archivo: **un backtick en un comentario
+  rompe el template literal `PAGE`** (cierra el `` ` ``) — usar comillas, nunca backticks dentro de PAGE.
+
 ### ⏳ Siguientes (al 2026-06-23)
 - [x] **Escritura V2 (selector de motivo) operativa** ✅ — POST `/horacio-v2` con catálogo cerrado
   (falta_material/personal/maquina/otros). Causa raíz del 404: el nodo webhook POST agregado por
