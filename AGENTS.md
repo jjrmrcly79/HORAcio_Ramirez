@@ -60,8 +60,19 @@ gracia 10 / escalar 30 · Marco→Jorge · pantalla sin nombre de operadora · c
 - **Kiosko** workflow `Horacio - Kiosko` (`YjZexqin2re2GLwo`): TV oscura, tiles por estado
   (soft recién / calm acusado / warn / bad escalado), cronómetro client-side, auto-poll 20s.
   **El acuse calma la pantalla** (azul "Atendiendo: Marco") → cumple "no marcar si ya lo atienden".
-- **Pendiente Fase 2:** detección de recurrencia activa (badge ya en kiosko) → disparar metodología
-  de causa raíz formal cuando un patrón se repite. Validar la entrevista en el chat espejo `5367409334`.
+- **Bugfix (`sql/038`, verificado E2E):** faltaba `paro_root` en `sesiones_step_check` → 23514/400
+  abortaba la entrevista tras cerrar el paro (síntoma: "Ese paro ya estaba cerrado"). Arreglado +
+  1ª pregunta fija + prompt 5-porqués reforzado (cierra con `LISTO`, máx 2 preguntas) + closeParo en
+  try/catch + doble-tap ya no borra la entrevista + limpia markdown. Probado: causa raíz + cadena se
+  guardan, sesión→idle. Commits `5f110c9`+`aaeecb5` pusheados a `chore/graphify-graph`.
+- **SIGUIENTES PASOS:**
+  1. **Fase 2 — recurrencia ACTIVA:** hoy `v_paros_recurrentes` solo se muestra (badge kiosko). Falta
+     que el sistema **avise/dispare metodología de causa raíz formal** cuando un patrón se repite (≥3×/7d)
+     y lo sume al resumen a Dirección.
+  2. **Poblar `correctiva` más seguido** (hoy `resumirRoot` solo regresa causa; el path `LISTO` sí trae correctiva).
+  3. **Dejar la URL del kiosko** (`…/horacio-kiosko?token=<DASH_TOKEN>`) en una TV de oficina y otra de piso.
+  4. **Re-prueba de Juan** del flujo del paro en Telegram → ajustar tono de las preguntas si hace falta.
+  5. **Merge `chore/graphify-graph`→`main`** (main quedó atrás; PR de limpieza cuando Juan diga).
 
 **Ventanas HxH:** turno 6:30–15:30 → 9 ventanas de :30 (06:30-07:30 … 14:30-15:30).
 **Meta/cumplimiento:** Daniel fija OT+meta por tablero con `/orden`; si no hay, usa
