@@ -364,23 +364,25 @@ const askHoracio = async (msgs, ctx) => {
 };
 // CAUSA RAÍZ: análisis breve estilo 5 porqués al CERRAR el paro (Claude Haiku).
 // La IA pregunta UNA cosa a la vez; cuando tiene la causa raíz responde "LISTO|causa|correctiva".
-const ROOT_SYS = 'Eres Horacio Ramírez, compañero del piso de Mapartel. Haces un análisis de causa raíz MUY breve de un paro de producción, estilo 5 porqués Lean. Tono cálido y mexicano, sin regaños ni tecnicismos. Profundiza en POR QUÉ pasó el paro (no en cómo se resolvió), UNA pregunta corta a la vez. Cuando ya tengas una causa raíz accionable y de fondo (no "se descompuso" ni "falló"), DEJA de preguntar y responde EXACTAMENTE en una sola línea: LISTO|<causa raíz en 1 frase>|<acción correctiva o preventiva en 1 frase>. Mientras no sea clara, responde SOLO con la siguiente pregunta (sin la palabra LISTO). Máximo 3 preguntas en total.';
-const askRoot = async (causaTxt, linea, min, msgs) => {
+const ROOT_PREGUNTA1 = '¿Por qué pasó? Cuéntame con tus palabras qué lo provocó 🤔'; // 1ra pregunta SIEMPRE fija y clara
+const ROOT_SYS = 'Eres Horacio Ramírez, compañero del piso de Mapartel. Estás haciendo un análisis de causa raíz BREVE de un paro, estilo 5 porqués Lean, hablando sencillo como en el piso (sin tecnicismos, sin regaños). Te paso la plática hasta ahora (la pregunta y lo que contestó la persona). Tu trabajo: si TODAVÍA no está clara la causa de fondo, haz UNA sola pregunta corta y DIRECTA tipo "¿y por qué pasó eso?". EN CUANTO ya tengas una causa raíz accionable (algo concreto que se pueda corregir, por ejemplo "almacén no avisó del cambio de modelo" — NO sirve "se descompuso" o "falló"), DEJA de preguntar y responde EXACTAMENTE en una sola línea con este formato y nada más: LISTO|<causa raíz en 1 frase sencilla>|<qué hacer para que no se repita, 1 frase>. Haz como MÁXIMO 1 pregunta de seguimiento; en cuanto tengas algo accionable cierra con LISTO. Si ya hay 2 respuestas, cierra con LISTO aunque no sea perfecto.';
+// askRoot recibe el texto de la plática (qa) y devuelve: la siguiente pregunta, o "LISTO|causa|correctiva".
+const askRoot = async (causaTxt, linea, conv) => {
   try {
-    const sys = ROOT_SYS + `\n\nPARO: línea ${linea} · causa reportada "${causaTxt}" · duró ${min} min.`;
-    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 200, system: sys, messages: msgs }, json: true });
+    const sys = ROOT_SYS + `\n\nPARO: línea ${linea} · causa reportada "${causaTxt}".`;
+    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 180, system: sys, messages: [{ role: 'user', content: 'Plática hasta ahora:\n' + conv }] }, json: true });
     return ((r && r.content && r.content[0] && r.content[0].text) || '').trim();
   } catch (e) { return ''; }
 };
-const resumirRoot = async (causaTxt, linea, msgs) => {
+const resumirRoot = async (causaTxt, linea, conv) => {
   try {
-    const conv = msgs.map((m) => (m.role === 'user' ? 'Persona: ' : 'Horacio: ') + m.content).join('\n');
-    const sys = 'Resume en UNA sola frase la causa raíz del paro a partir de esta plática (estilo Lean, accionable, sin regaños). Si no hay suficiente, responde solo "—".';
+    const sys = 'Resume en UNA sola frase, sencilla y accionable, la causa raíz del paro a partir de esta plática (estilo Lean, sin regaños). Si de plano no hay info, responde solo "—".';
     const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 80, system: sys, messages: [{ role: 'user', content: `Paro en ${linea}, causa reportada "${causaTxt}".\n\n${conv}` }] }, json: true });
     const t = ((r && r.content && r.content[0] && r.content[0].text) || '').trim();
     return (t === '—') ? '' : t;
   } catch (e) { return ''; }
 };
+const qaConv = (qa) => qa.map((x) => 'P: ' + x.p + '\nR: ' + x.r).join('\n');
 // MEMORIA: contexto CURADO del perfil (solo lo aceptado por RH) para personalizar la plática
 const perfilCtx = async (pid) => {
   if (!pid) return '';
@@ -479,17 +481,16 @@ const tjPickMenu = async (d) => {
 const closeParo = async (paroid, min) => {
   const m = Number(min);
   const r = await pg(`UPDATE horacio.paros SET ts_fin=now(), estado='cerrado', duracion_min=${m} WHERE id='${esc(paroid)}' AND estado='abierto' RETURNING id`);
-  if (!r || !r.length) { await setSess('paro', 'idle', {}); await tg('sendMessage', { chat_id, text: 'Ese paro ya estaba cerrado.' }); return; }
+  if (!r || !r.length) { await tg('sendMessage', { chat_id, text: 'Ese paro ya estaba registrado 👍' }); return; } // no toca la sesión (puede haber entrevista en curso)
   // Análisis de causa raíz (5 porqués) — para que el dato diga más que "cerrado en X min".
-  const info = await pg(`SELECT l.nombre AS linea, COALESCE(cp.boton_texto,'—') AS causa FROM horacio.paros p JOIN horacio.lineas l ON l.id=p.linea_id LEFT JOIN horacio.causas_paro cp ON cp.codigo=p.causa_codigo WHERE p.id='${esc(paroid)}'`);
-  const linea = (info[0] && info[0].linea) || 'la línea', causaTxt = (info[0] && info[0].causa) || 'el paro';
-  await tg('sendMessage', { chat_id, text: `Paro de ${m} min registrado, gracias 🙏 Para que no se repita, ayúdame con algo rápido (máx. 3 preguntas).` });
-  const msgs = [{ role: 'user', content: 'Listo, ya quedó el paro. Hazme la primera pregunta para entender por qué pasó.' }];
-  const q = await askRoot(causaTxt, linea, m, msgs);
-  if (!q) { await setSess('paro', 'idle', {}); return; } // sin IA → no estorbamos; el paro ya quedó registrado
-  msgs.push({ role: 'assistant', content: q });
-  await setSess('paro', 'paro_root', { paroid, min: m, linea, causaTxt, msgs, n: 1 });
-  await tg('sendMessage', { chat_id, text: q, reply_markup: { inline_keyboard: [[{ text: '⏭️ No sé / saltar', callback_data: 'proot_skip_' + paroid }]] } });
+  // Va en try/catch: si algo falla, el paro YA quedó registrado y no truena el bot.
+  try {
+    const info = await pg(`SELECT l.nombre AS linea, COALESCE(cp.boton_texto,'—') AS causa FROM horacio.paros p JOIN horacio.lineas l ON l.id=p.linea_id LEFT JOIN horacio.causas_paro cp ON cp.codigo=p.causa_codigo WHERE p.id='${esc(paroid)}'`);
+    const linea = (info[0] && info[0].linea) || 'la línea', causaTxt = (info[0] && info[0].causa) || 'el paro';
+    await tg('sendMessage', { chat_id, text: `Paro de ${m} min registrado, gracias 🙏 Para que no se repita, ayúdame a entender la causa:` });
+    await setSess('paro', 'paro_root', { paroid, min: m, linea, causaTxt, qa: [], lastQ: ROOT_PREGUNTA1, n: 1 });
+    await tg('sendMessage', { chat_id, text: ROOT_PREGUNTA1, reply_markup: { inline_keyboard: [[{ text: '⏭️ No sé / saltar', callback_data: 'proot_skip_' + paroid }]] } });
+  } catch (e) { await setSess('paro', 'idle', {}); }
 };
 // arranca paro/falt/cal sobre un tablero ya elegido
 const startFlowWithBoard = async (flujo, linea_id, lnombre) => {
@@ -699,10 +700,8 @@ if (action === 'proot_skip') {
   const s = await readSess();
   // si alcanzó a contestar algo, guardamos la cadena parcial; si no, solo cerramos.
   if (s && s.step === 'paro_root' && s.d && s.d.paroid === paroid) {
-    const msgs = s.d.msgs || [];
-    const chain = [];
-    for (let i = 0; i < msgs.length; i++) { if (msgs[i].role === 'assistant' && msgs[i + 1] && msgs[i + 1].role === 'user') chain.push({ p: msgs[i].content, r: msgs[i + 1].content }); }
-    if (chain.length) await pg(`UPDATE horacio.paros SET analisis_porques='${esc(JSON.stringify(chain))}'::jsonb, analisis_por=${chat_id} WHERE id='${esc(paroid)}'`);
+    const qa = s.d.qa || [];
+    if (qa.length) await pg(`UPDATE horacio.paros SET analisis_porques='${esc(JSON.stringify(qa))}'::jsonb, analisis_por=${chat_id} WHERE id='${esc(paroid)}'`);
   }
   await setSess('paro', 'idle', {});
   await tg('sendMessage', { chat_id, text: 'Va, sin problema 🙏 Quedó registrado. Cuando sepas la causa me dices.' });
@@ -944,26 +943,26 @@ if (action === 'ignore' && msg && (text || photo)) {
   if (s && s.step === 'paro_root' && s.d.paroid) {
     const t = (text || '').trim();
     if (!t) { await tg('sendMessage', { chat_id, text: 'Cuéntame con tus palabras 🙏 (o toca "saltar").' }); return [{ json: { action: 'paro_root_bad' } }]; }
-    const msgs = (s.d.msgs || []).slice(-10);
-    msgs.push({ role: 'user', content: t });
-    const reply = await askRoot(s.d.causaTxt, s.d.linea, s.d.min, msgs);
-    const n = (s.d.n || 1) + 1;
+    const qa = (s.d.qa || []).slice();
+    qa.push({ p: s.d.lastQ || ROOT_PREGUNTA1, r: t.slice(0, 500) });
+    const conv = qaConv(qa);
+    const reply = await askRoot(s.d.causaTxt, s.d.linea, conv);
+    const n = (s.d.n || 1) + 1; // preguntas hechas (1 fija + seguimiento)
     const isListo = /^LISTO\|/i.test(reply);
-    const done = isListo || n > 3 || !reply;
+    const done = isListo || n >= 3 || !reply; // cierra con LISTO, tras 2 preguntas (fija + 1), o si la IA no respondió
     if (done) {
       let causa_raiz = '', correctiva = '';
       if (isListo) { const parts = reply.replace(/^LISTO\|/i, '').split('|'); causa_raiz = (parts[0] || '').trim(); correctiva = (parts[1] || '').trim(); }
-      const chain = [];
-      for (let i = 0; i < msgs.length; i++) { if (msgs[i].role === 'assistant' && msgs[i + 1] && msgs[i + 1].role === 'user') chain.push({ p: msgs[i].content, r: msgs[i + 1].content }); }
-      if (!causa_raiz) causa_raiz = await resumirRoot(s.d.causaTxt, s.d.linea, msgs);
-      await pg(`UPDATE horacio.paros SET causa_raiz=${causa_raiz ? `'${esc(causa_raiz.slice(0, 400))}'` : 'NULL'}, correctiva=${correctiva ? `'${esc(correctiva.slice(0, 400))}'` : 'NULL'}, analisis_porques='${esc(JSON.stringify(chain))}'::jsonb, analisis_por=${chat_id} WHERE id='${esc(s.d.paroid)}'`);
+      if (!causa_raiz) causa_raiz = await resumirRoot(s.d.causaTxt, s.d.linea, conv);
+      causa_raiz = (causa_raiz || '').replace(/[*#`_]/g, '').trim();
+      correctiva = (correctiva || '').replace(/[*#`_]/g, '').trim();
+      await pg(`UPDATE horacio.paros SET causa_raiz=${causa_raiz ? `'${esc(causa_raiz.slice(0, 400))}'` : 'NULL'}, correctiva=${correctiva ? `'${esc(correctiva.slice(0, 400))}'` : 'NULL'}, analisis_porques='${esc(JSON.stringify(qa))}'::jsonb, analisis_por=${chat_id} WHERE id='${esc(s.d.paroid)}'`);
       await setSess('paro', 'idle', {});
       const cierre = causa_raiz ? `Listo, gracias 🙏 Lo apunté así:\n🔎 Causa raíz: ${causa_raiz}${correctiva ? `\n🛠️ Para que no se repita: ${correctiva}` : ''}` : 'Gracias 🙏 Quedó registrado.';
       await tg('sendMessage', { chat_id, text: cierre });
       return [{ json: { action: 'paro_root_done' } }];
     }
-    msgs.push({ role: 'assistant', content: reply });
-    await setSess('paro', 'paro_root', { paroid: s.d.paroid, min: s.d.min, linea: s.d.linea, causaTxt: s.d.causaTxt, msgs: msgs.slice(-10), n });
+    await setSess('paro', 'paro_root', { paroid: s.d.paroid, min: s.d.min, linea: s.d.linea, causaTxt: s.d.causaTxt, qa, lastQ: reply, n });
     await tg('sendMessage', { chat_id, text: reply, reply_markup: { inline_keyboard: [[{ text: '⏭️ No sé / saltar', callback_data: 'proot_skip_' + s.d.paroid }]] } });
     return [{ json: { action: 'paro_root' } }];
   }
