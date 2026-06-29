@@ -180,6 +180,31 @@ if (b && b.admin) {
     return [{ json: { admin: 'escalate_nocapture', escalated, notified } }];
   }
 
+  if (b.admin === 'paro_sweep') {
+    // Lazo cerrado de paros: nag cada T1 sin acuse · escalar a Dirección a los T2.
+    // Decisión Vibe Check 2026-06-29: gracia/nag 10 min · escalar 30 min · Marco→Jorge.
+    const T1 = 10, T2 = 30;
+    const rows = await pg(`SELECT p.id, COALESCE(p.escalado_nivel,0) AS nivel, EXTRACT(EPOCH FROM (now()-p.notificado_ts))/60 AS age_min, EXTRACT(EPOCH FROM (now()-COALESCE(p.ultimo_recordatorio,p.notificado_ts)))/60 AS nag_min, l.nombre AS linea, COALESCE(cp.boton_texto,'—') AS causa, pe.chat_id AS owner_chat FROM horacio.paros p JOIN horacio.lineas l ON l.id=p.linea_id LEFT JOIN horacio.causas_paro cp ON cp.codigo=p.causa_codigo LEFT JOIN horacio.personas pe ON pe.id=p.escalado_a WHERE p.estado='abierto' AND p.acuse_ts IS NULL AND p.notificado_ts IS NOT NULL`);
+    const dir = await pg("SELECT id, chat_id, nombre FROM horacio.personas WHERE rol='direccion' AND chat_id IS NOT NULL AND activa LIMIT 1");
+    const D = (dir && dir.length) ? dir[0] : null;
+    let nags = 0, escal = 0;
+    for (const p of rows) {
+      const age = Number(p.age_min), nag = Number(p.nag_min), nivel = Number(p.nivel || 0);
+      if (nivel === 0 && age >= T2 && D) {
+        await pg(`UPDATE horacio.paros SET escalado_nivel=1, escalado_ts=now(), escalado_a='${D.id}', ultimo_recordatorio=now() WHERE id='${p.id}'`);
+        await tg('sendMessage', { chat_id: D.chat_id, text: `⚠️ ESCALAMIENTO — paro sin atender ${Math.round(age)} min\n🛑 ${p.linea}: ${p.causa}\nNadie lo ha acusado todavía. ¿Puedes apoyar?`, reply_markup: { inline_keyboard: [[{ text: 'Visto 👍', callback_data: 'ack_' + p.id }]] } });
+        escal++; continue;
+      }
+      const chat = (nivel === 1 && D) ? D.chat_id : p.owner_chat;
+      if (chat && nag >= T1) {
+        await pg(`UPDATE horacio.paros SET ultimo_recordatorio=now() WHERE id='${p.id}'`);
+        await tg('sendMessage', { chat_id: chat, text: `🔔 Recordatorio — paro SIN acuse (${Math.round(age)} min)\n🛑 ${p.linea}: ${p.causa}\nAcúsalo para que la líder sepa que vas.`, reply_markup: { inline_keyboard: [[{ text: 'Visto 👍', callback_data: 'ack_' + p.id }]] } });
+        nags++;
+      }
+    }
+    return [{ json: { admin: 'paro_sweep', candidatos: rows.length, nags, escal } }];
+  }
+
   if (b.admin === 'orden_reminder') {
     // recordatorio matutino a Producción (Daniel) para definir las órdenes del día
     const own = await pg("SELECT chat_id, nombre FROM horacio.personas WHERE rol='paros' AND chat_id IS NOT NULL AND activa LIMIT 1");
@@ -337,6 +362,25 @@ const askHoracio = async (msgs, ctx) => {
     return t || 'Aquí te leo 🙏';
   } catch (e) { return 'Gracias por contarme 🙏 (no pude responder bien ahorita, pero quedó guardado).'; }
 };
+// CAUSA RAÍZ: análisis breve estilo 5 porqués al CERRAR el paro (Claude Haiku).
+// La IA pregunta UNA cosa a la vez; cuando tiene la causa raíz responde "LISTO|causa|correctiva".
+const ROOT_SYS = 'Eres Horacio Ramírez, compañero del piso de Mapartel. Haces un análisis de causa raíz MUY breve de un paro de producción, estilo 5 porqués Lean. Tono cálido y mexicano, sin regaños ni tecnicismos. Profundiza en POR QUÉ pasó el paro (no en cómo se resolvió), UNA pregunta corta a la vez. Cuando ya tengas una causa raíz accionable y de fondo (no "se descompuso" ni "falló"), DEJA de preguntar y responde EXACTAMENTE en una sola línea: LISTO|<causa raíz en 1 frase>|<acción correctiva o preventiva en 1 frase>. Mientras no sea clara, responde SOLO con la siguiente pregunta (sin la palabra LISTO). Máximo 3 preguntas en total.';
+const askRoot = async (causaTxt, linea, min, msgs) => {
+  try {
+    const sys = ROOT_SYS + `\n\nPARO: línea ${linea} · causa reportada "${causaTxt}" · duró ${min} min.`;
+    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 200, system: sys, messages: msgs }, json: true });
+    return ((r && r.content && r.content[0] && r.content[0].text) || '').trim();
+  } catch (e) { return ''; }
+};
+const resumirRoot = async (causaTxt, linea, msgs) => {
+  try {
+    const conv = msgs.map((m) => (m.role === 'user' ? 'Persona: ' : 'Horacio: ') + m.content).join('\n');
+    const sys = 'Resume en UNA sola frase la causa raíz del paro a partir de esta plática (estilo Lean, accionable, sin regaños). Si no hay suficiente, responde solo "—".';
+    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 80, system: sys, messages: [{ role: 'user', content: `Paro en ${linea}, causa reportada "${causaTxt}".\n\n${conv}` }] }, json: true });
+    const t = ((r && r.content && r.content[0] && r.content[0].text) || '').trim();
+    return (t === '—') ? '' : t;
+  } catch (e) { return ''; }
+};
 // MEMORIA: contexto CURADO del perfil (solo lo aceptado por RH) para personalizar la plática
 const perfilCtx = async (pid) => {
   if (!pid) return '';
@@ -434,10 +478,18 @@ const tjPickMenu = async (d) => {
 // cierra un paro con la duración (en min) que confirmó la líder (no inflada por cierre tardío)
 const closeParo = async (paroid, min) => {
   const m = Number(min);
-  const r = await pg(`UPDATE horacio.paros SET ts_fin=now(), estado='cerrado', duracion_min=${m} WHERE id='${esc(paroid)}' AND estado='abierto' RETURNING duracion_min`);
-  await setSess('paro', 'idle', {});
-  if (r && r.length) await tg('sendMessage', { chat_id, text: `Paro de ${m} min registrado. Gracias por avisar 🙏` });
-  else await tg('sendMessage', { chat_id, text: 'Ese paro ya estaba cerrado.' });
+  const r = await pg(`UPDATE horacio.paros SET ts_fin=now(), estado='cerrado', duracion_min=${m} WHERE id='${esc(paroid)}' AND estado='abierto' RETURNING id`);
+  if (!r || !r.length) { await setSess('paro', 'idle', {}); await tg('sendMessage', { chat_id, text: 'Ese paro ya estaba cerrado.' }); return; }
+  // Análisis de causa raíz (5 porqués) — para que el dato diga más que "cerrado en X min".
+  const info = await pg(`SELECT l.nombre AS linea, COALESCE(cp.boton_texto,'—') AS causa FROM horacio.paros p JOIN horacio.lineas l ON l.id=p.linea_id LEFT JOIN horacio.causas_paro cp ON cp.codigo=p.causa_codigo WHERE p.id='${esc(paroid)}'`);
+  const linea = (info[0] && info[0].linea) || 'la línea', causaTxt = (info[0] && info[0].causa) || 'el paro';
+  await tg('sendMessage', { chat_id, text: `Paro de ${m} min registrado, gracias 🙏 Para que no se repita, ayúdame con algo rápido (máx. 3 preguntas).` });
+  const msgs = [{ role: 'user', content: 'Listo, ya quedó el paro. Hazme la primera pregunta para entender por qué pasó.' }];
+  const q = await askRoot(causaTxt, linea, m, msgs);
+  if (!q) { await setSess('paro', 'idle', {}); return; } // sin IA → no estorbamos; el paro ya quedó registrado
+  msgs.push({ role: 'assistant', content: q });
+  await setSess('paro', 'paro_root', { paroid, min: m, linea, causaTxt, msgs, n: 1 });
+  await tg('sendMessage', { chat_id, text: q, reply_markup: { inline_keyboard: [[{ text: '⏭️ No sé / saltar', callback_data: 'proot_skip_' + paroid }]] } });
 };
 // arranca paro/falt/cal sobre un tablero ya elegido
 const startFlowWithBoard = async (flujo, linea_id, lnombre) => {
@@ -498,6 +550,7 @@ else if (data.startsWith('ack_')) action = 'ack';
 else if (data.startsWith('pclose_')) action = 'pclose';
 else if (data.startsWith('pdurx_')) action = 'pdurx';
 else if (data.startsWith('pdur_')) action = 'pdur';
+else if (data.startsWith('proot_skip_')) action = 'proot_skip';
 else if (data.startsWith('fbm_')) action = 'fb_mood';
 else if (data === 'fb_cerrar') action = 'fb_cerrar';
 else if (data === 'falt_start') action = 'falt_start';
@@ -594,7 +647,7 @@ if (action === 'paro_causa') {
   const causaTxt = cinfo[0].boton_texto, escala = cinfo[0].escala_a;
   let owner = null;
   if (escala) { const o = await pg(`SELECT id, chat_id, nombre FROM horacio.personas WHERE rol='${esc(escala)}' AND chat_id IS NOT NULL AND activa LIMIT 1`); if (o && o.length) owner = o[0]; }
-  const ins = await pg(`INSERT INTO horacio.paros(linea_id,causa_codigo,ts_inicio,reporto_chat_id,escalado_a,estado) VALUES('${linea_id}','${esc(codigo)}',now(),${chat_id},${owner ? `'${owner.id}'` : 'NULL'},'abierto') RETURNING id`);
+  const ins = await pg(`INSERT INTO horacio.paros(linea_id,causa_codigo,ts_inicio,reporto_chat_id,escalado_a,estado,notificado_ts) VALUES('${linea_id}','${esc(codigo)}',now(),${chat_id},${owner ? `'${owner.id}'` : 'NULL'},'abierto',${owner ? 'now()' : 'NULL'}) RETURNING id`);
   const paroid = ins[0].id;
   await setSess('paro', 'idle', s.d);
   if (owner) await tg('sendMessage', { chat_id: owner.chat_id, text: `🛑 Paro en ${esc(lnombre)}: ${causaTxt}. Acúsalo para que la líder sepa que vas.`, reply_markup: { inline_keyboard: [[{ text: 'Visto 👍', callback_data: 'ack_' + paroid }]] } });
@@ -637,6 +690,22 @@ if (action === 'pdur' || action === 'pdurx') {
   const rest = data.slice(5), us = rest.lastIndexOf('_');
   const paroid = rest.slice(0, us), min = parseInt(rest.slice(us + 1), 10);
   await closeParo(paroid, min);
+  return [{ json: { action } }];
+}
+
+if (action === 'proot_skip') {
+  await rmKb(chat_id, mid);
+  const paroid = data.slice(11);
+  const s = await readSess();
+  // si alcanzó a contestar algo, guardamos la cadena parcial; si no, solo cerramos.
+  if (s && s.step === 'paro_root' && s.d && s.d.paroid === paroid) {
+    const msgs = s.d.msgs || [];
+    const chain = [];
+    for (let i = 0; i < msgs.length; i++) { if (msgs[i].role === 'assistant' && msgs[i + 1] && msgs[i + 1].role === 'user') chain.push({ p: msgs[i].content, r: msgs[i + 1].content }); }
+    if (chain.length) await pg(`UPDATE horacio.paros SET analisis_porques='${esc(JSON.stringify(chain))}'::jsonb, analisis_por=${chat_id} WHERE id='${esc(paroid)}'`);
+  }
+  await setSess('paro', 'idle', {});
+  await tg('sendMessage', { chat_id, text: 'Va, sin problema 🙏 Quedó registrado. Cuando sepas la causa me dices.' });
   return [{ json: { action } }];
 }
 
@@ -871,6 +940,32 @@ if (action === 'ignore' && msg && (text || photo)) {
     if (isNaN(n) || n < 1 || n > 1440) { await tg('sendMessage', { chat_id, text: 'Mándame cuántos minutos duró (solo el número, 1 a 1440) 🙏' }); return [{ json: { action: 'paro_dur_bad' } }]; }
     await closeParo(s.d.paroid, n);
     return [{ json: { action: 'paro_dur' } }];
+  }
+  if (s && s.step === 'paro_root' && s.d.paroid) {
+    const t = (text || '').trim();
+    if (!t) { await tg('sendMessage', { chat_id, text: 'Cuéntame con tus palabras 🙏 (o toca "saltar").' }); return [{ json: { action: 'paro_root_bad' } }]; }
+    const msgs = (s.d.msgs || []).slice(-10);
+    msgs.push({ role: 'user', content: t });
+    const reply = await askRoot(s.d.causaTxt, s.d.linea, s.d.min, msgs);
+    const n = (s.d.n || 1) + 1;
+    const isListo = /^LISTO\|/i.test(reply);
+    const done = isListo || n > 3 || !reply;
+    if (done) {
+      let causa_raiz = '', correctiva = '';
+      if (isListo) { const parts = reply.replace(/^LISTO\|/i, '').split('|'); causa_raiz = (parts[0] || '').trim(); correctiva = (parts[1] || '').trim(); }
+      const chain = [];
+      for (let i = 0; i < msgs.length; i++) { if (msgs[i].role === 'assistant' && msgs[i + 1] && msgs[i + 1].role === 'user') chain.push({ p: msgs[i].content, r: msgs[i + 1].content }); }
+      if (!causa_raiz) causa_raiz = await resumirRoot(s.d.causaTxt, s.d.linea, msgs);
+      await pg(`UPDATE horacio.paros SET causa_raiz=${causa_raiz ? `'${esc(causa_raiz.slice(0, 400))}'` : 'NULL'}, correctiva=${correctiva ? `'${esc(correctiva.slice(0, 400))}'` : 'NULL'}, analisis_porques='${esc(JSON.stringify(chain))}'::jsonb, analisis_por=${chat_id} WHERE id='${esc(s.d.paroid)}'`);
+      await setSess('paro', 'idle', {});
+      const cierre = causa_raiz ? `Listo, gracias 🙏 Lo apunté así:\n🔎 Causa raíz: ${causa_raiz}${correctiva ? `\n🛠️ Para que no se repita: ${correctiva}` : ''}` : 'Gracias 🙏 Quedó registrado.';
+      await tg('sendMessage', { chat_id, text: cierre });
+      return [{ json: { action: 'paro_root_done' } }];
+    }
+    msgs.push({ role: 'assistant', content: reply });
+    await setSess('paro', 'paro_root', { paroid: s.d.paroid, min: s.d.min, linea: s.d.linea, causaTxt: s.d.causaTxt, msgs: msgs.slice(-10), n });
+    await tg('sendMessage', { chat_id, text: reply, reply_markup: { inline_keyboard: [[{ text: '⏭️ No sé / saltar', callback_data: 'proot_skip_' + s.d.paroid }]] } });
+    return [{ json: { action: 'paro_root' } }];
   }
   if (s && s.step === 'orden_ot') {
     const ot = (text || '').trim();

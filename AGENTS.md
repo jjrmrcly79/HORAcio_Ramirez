@@ -35,15 +35,33 @@ vía `recibe_resumen`, sql/021) · Nayeli Hernández
 Juan Carlos Martínez "JC" (mantenimiento) · Jorge Ramírez (dirección/resumen) ·
 **Ivonne (RH)** ⏳ *falta `/start → 🤝 RH` para recibir el feedback de la encuesta*.
 
-**Crons activos (`Horacio - Scheduler` `ilJpIucqEBpKnFgT`, TZ MX, L–V) — 7:** órdenes
+**Crons activos (`Horacio - Scheduler` `ilJpIucqEBpKnFgT`, TZ MX, L–V) — 8:** órdenes
 `45 6` → ping `35 7-15` → recordatorio `50 7-15` → escala no-captura `58 7-15` →
-resumen líder `40 15` → resumen Dirección `0 17` → **encuesta de salida `0 18`**.
+resumen líder `40 15` → resumen Dirección `0 17` → **encuesta de salida `0 18`** →
+**barrido de paros `*/5 6-16`** (lazo cerrado: nag 10 min / escalar 30 min → `admin:paro_sweep`).
 
 **Apps web:** **Dashboard** (Dirección, solo lectura, sin nombres) `…/horacio-dash?token=<DASH_TOKEN>`
 (`ng4loQv932n2AIRC`) · **Panel de captura** (supervisión, con escritura, **login por PIN**)
-`…/horacio-panel?token=<PANEL_TOKEN>` (`4sJAO9urzrgQowJB`).
+`…/horacio-panel?token=<PANEL_TOKEN>` (`4sJAO9urzrgQowJB`) · **Kiosko de paros** (TV ambiente
+oficina/piso, solo lectura, sin nombres de operadora, auto-refresh + cronómetro)
+`…/horacio-kiosko?token=<DASH_TOKEN>` (`YjZexqin2re2GLwo`, fuente `n8n/horacio-kiosko.code.js`).
 **IA:** plática de la encuesta de salida usa **Claude Haiku** (`ANTHROPIC_API_KEY` en secrets).
 **Guía de uso / instructivo:** ver `Horacio - Guia de Uso e Instructivo.md`.
+
+**[2026-06-29] Lazo cerrado de paros + Kiosko + Causa raíz (Fase 1).** Vibe Check:
+gracia 10 / escalar 30 · Marco→Jorge · pantalla sin nombre de operadora · captura raíz LLM.
+- **BD** `sql/037`: en `horacio.paros` → `notificado_ts·ultimo_recordatorio·escalado_nivel·escalado_ts`
+  (lazo) + `causa_raiz·correctiva·analisis_porques(jsonb)·analisis_metodo·analisis_por` (5 porqués).
+  Vistas `v_paros_pantalla` (kiosko, sin operadora) y `v_paros_recurrentes` (≥3× en 7d, Fase 2).
+- **Bot** (`horacio-bot.code.js`): al abrir paro sella `notificado_ts`; admin `paro_sweep` (nag/escalera);
+  al CERRAR lanza **entrevista 5 porqués con Claude Haiku** (`askRoot`/`resumirRoot`, step `paro_root`,
+  botón `proot_skip`) → guarda causa raíz + correctiva + cadena. El **acuse corta el nag** (calma todo).
+- **Scheduler**: nodo `Cron Paro Sweep` (`*/5 6-16 * * 1-5`) → `POST paro_sweep`. Reactivado.
+- **Kiosko** workflow `Horacio - Kiosko` (`YjZexqin2re2GLwo`): TV oscura, tiles por estado
+  (soft recién / calm acusado / warn / bad escalado), cronómetro client-side, auto-poll 20s.
+  **El acuse calma la pantalla** (azul "Atendiendo: Marco") → cumple "no marcar si ya lo atienden".
+- **Pendiente Fase 2:** detección de recurrencia activa (badge ya en kiosko) → disparar metodología
+  de causa raíz formal cuando un patrón se repite. Validar la entrevista en el chat espejo `5367409334`.
 
 **Ventanas HxH:** turno 6:30–15:30 → 9 ventanas de :30 (06:30-07:30 … 14:30-15:30).
 **Meta/cumplimiento:** Daniel fija OT+meta por tablero con `/orden`; si no hay, usa
@@ -750,10 +768,80 @@ Daniel) + **drag dentro de cada sección** (SMT / Final por separado, respeta pr
   lanzar→payload+card vigente). Gotcha cazado por el check del archivo: **un backtick en un comentario
   rompe el template literal `PAGE`** (cierra el `` ` ``) — usar comillas, nunca backticks dentro de PAGE.
 
+### ✅ Refresco de OT desde "Reporte detalle OTS" del ERP (2026-06-26, sql/034)
+Mapartel compartió **dos** exports del ERP: *Reporte general OTS* y *Reporte detalle OTS* (447 OT
+c/u). El **detalle es superset del general** → fuente ÚNICA (el general se descartó). Reemplaza la
+carga curada anterior (39 OT `Proce` snapshot 2026-06-23) por el **universo completo al 2026-06-26**.
+- **Gotcha del ERP:** la columna rotulada **"Tiempo Estimado" = cantidad TERMINADA/producida** (no
+  tiempo); columna **"% Avance" = terminada/ordenada**. Verificado: `terminada ≤ ordenada` en las 447,
+  `%avance` cuadra en 428/447 (resto = lotes 0/0). Resuelve la falta de avance del general.
+- **Fechas mixtas:** el ERP mezcla celdas con formato fecha (openpyxl → `datetime`) y texto `DD/MM/YY`
+  → parser de dos casos (0 nulas en las 447).
+- **Status ERP → estado_nexia:** Cance→`muerta` (2) · Cerra→`cerrada` (344) · resto→`propuesta` (101
+  = Liber 41 + Proce 39 + Regis 20 + Progr 1).
+- **BD (sql/034):** `+pct_avance numeric`. **Las vistas con `SELECT o.*` (v_ot_parte) congelan su lista
+  de columnas al crearse** → DROP+recreate en orden de dependencia para que tomen la columna nueva
+  (no basta CREATE OR REPLACE: reordena columnas → error). `v_ot_meta`/`v_plan_dia`/`v_ot_inconsistencias`
+  ahora **excluyen `cerrada`** (si no, 344 cerradas inundan el panel); `v_vibora_ot` se mantiene
+  (cerrada = WIP 0 = flujo completado). Las vistas **no filtran por snapshot** → el loader deja **una
+  sola foto** (migra comentario/motivo del snapshot viejo y borra los demás).
+- **Loader:** `scripts/import_detalle_ots.py "<detalle.xlsx>" <YYYY-MM-DD> --single [--dry]` (idempotente,
+  UPSERT orden_trabajo+snapshot). Corrido en vivo: 447 OT, 1 snapshot, comentario migrado.
+- **Panel sin deploy:** el Code node V2 lee las vistas en `/pg/query` en cada request → info ya viva.
+- **Diagnósticos destapados (del ERP, no de la carga):** 42 OT activas sin estándar · 40 con
+  `fecha_vence < fecha_orden` → las marca `v_ot_inconsistencias` para que Dirección revise.
+- **Pendiente opcional:** mostrar `pct_avance` en las cards del panel (hoy se expone en las vistas
+  pero el front aún no lo pinta).
+
+### ✅ Análisis subensamble-compartido + 2 mejoras de UI panel V2 (2026-06-26)
+A raíz de la duda "SMT hizo 2000 pero PTH 1500 en la OT 251200814" (parte 225D7291G006 / ANDROMEDA):
+- **Causa raíz:** el subensamble SMT es **común a varias tarjetas finales** (ANDROMEDA→6 variantes). SMT no
+  corre 1:1 por orden; el sobrante de una orden alimenta a otra. **57.5% del volumen terminado** (118,749/
+  206,499 pzs) rompe el supuesto 1:1 de `v_vibora_ot`. **14 subensambles afectados**, en 2 modos: (A) ratio
+  **2:1 constante** (panel/UoM: FOCARIS_CTRL_[H], 222D8835G004…) y (B) **pool compartido** multi-variante.
+  Hallazgo clave: el ratio **depende de la tarjeta final, no del subensamble** (FOCARIS_CTRL_[F]: 1:1 para
+  222D9519G025, 2:1 para los 295D2311). → la regla correcta es por **(subensamble × modelo)**.
+- **Doc para reunión con el cliente:** `docs/REUNION_subensambles_vibora_2026-06-26.md` (4 patrones con OTs
+  reales, checklist de salida: BOM subens/tarjeta + manejo de inventario de subensamble, anexo de los 14).
+  Pendiente: con esos datos, cambiar la víbora a `SMT_term vs final_term × factor` + pool por subensamble.
+- **UI panel V2 (`horacio-v2.code.js`):** (1) **Meta automática** — botón **"✕ quitar"** junto al selector de
+  motivo (`motclear`), deshace el `motivo_no_corre` (el backend `set_motivo` ya aceptaba motivo vacío→NULL;
+  faltaba el control). Sale oculto si la OT no tiene motivo. (2) **Flujo víbora** — chips de etapa ahora
+  **clicables para filtrar** las OT (en SMT / esperando PTH / en final / terminada + "todas"); cada fila lleva
+  `data-pos`, filtro por `classList fhide`. Validado: doble `node --check` (el #1 NO ve el browser script
+  porque vive en el template `PAGE` → extraer incluyendo el `(function(){` de apertura) + mock-DOM + dump
+  headless del DOM real. Desplegado en caliente (push_code.py → workflow `jVWVm7tDoxsO1kbw`).
+
 ### ⏳ Siguientes (al 2026-06-23)
 - [x] **Escritura V2 (selector de motivo) operativa** ✅ — POST `/horacio-v2` con catálogo cerrado
   (falta_material/personal/maquina/otros). Causa raíz del 404: el nodo webhook POST agregado por
   API quedó **sin `webhookId`** → n8n no registra el método; se le puso uno y se reactivó.
+- [x] **(Fase 3) Calendario detallado por hora** ✅ — tab **Calendario** en panel V2: expande el
+  programa oficial vigente a **bloques por hora** ("de tal a tal hora corre esta OT"), por área
+  (SMT/PTH), con Gantt + agenda imprimible + navegador de día. Modelo de horario **parametrizable**
+  (`horacio.calendario_config`, sql/035): inicio/fin de turno, liberación (1ª hora) y media hora de
+  comida → recalcula horas productivas. Es un RENDER (no escribe horarios). Duración = pendiente ÷
+  (std_cuello × nº líneas). Marca ⚠ vence/no alcanza. Para verlo con datos: lanzar un programa en el
+  tab Programa. **Fase B pendiente: carriles por línea física** (hoy 1 carril por área).
+- [x] **V1.5 — Captura de meta in-app + sugerencia desde estándar** ✅ — tab **Metas del día** en el
+  panel V1 (`horacio-panel`). Fija la meta desde el panel (misma `ordenes_tablero` que `/orden`,
+  `origen='panel'`) y **sugiere** meta = estándar teórico × prorrateo (`calendario_config`) acotado
+  por pendiente; ajustar pide motivo (5-porqués). Motor `meta_sugerida_tablero()` (sql/036) reusa el
+  de V2. Gobierno: `personas.puede_meta` (Marco+Jesica) / `puede_estandar` (Gaby). **Pendiente: alta
+  de Gaby en personas + PIN** para que pueda fijar meta/validar estándar.
+- [x] **OT desde el sistema (no captura manual)** ✅ — el selector de OT del tab Metas se llena de
+  `ordenes_trabajo` (export "en proceso"), filtrado por área del tablero (SMT→OT SMT, resto→final).
+  Loader nuevo `scripts/import_ot_proceso.py` para el formato limpio "OT PROCESO" (NP directo, cant
+  reales, ESTATUS='Proce', trae sufijo `_SMT`). Cargadas **48 OT vigentes** (foto única 2026-06-29,
+  reemplazó las 447 del 06-26, comentarios migrados). ⚠ Fechas del ERP sucias (vence<inicio en varias).
+- [x] **Estándar capturable en V1** ✅ — tab **Estándar** en el panel (mismo motor `set_estandar` que
+  V2: editor por parte × 15 estaciones, prioriza partes de OT en proceso sin estándar). Gateado a
+  `puede_estandar`/admin. Gaby actualiza lo que falta **sin ver V2**. (Pendiente: alta de Gaby + PIN.)
+- [x] **Paros = tablero vivo** ✅ — tab **Paros vivos**: tarjetas con **cronómetro que corre solo**
+  (1s, desde `ts_inicio`), color por antigüedad, y **a quién se escaló** (dueño por rol del tablero).
+- [ ] **(C) Escalamiento robusto** — PROPUESTA (Vibe Check pendiente): lazo cerrado con **acuse**
+  (✅ Atiendo), **nag** persistente y **escalera** de escalamiento; el tablero vivo es el canal pull.
+  Cambia bot+scheduler. Doc: `docs/Horacio-Propuesta-Escalamiento-Robusto.md`.
 - [ ] **(Fase 3) Captura directa por manufactura:** extender la escritura V2 a **avance/cantidad
   terminada** por OT (cierra el loop, sin importar Excel) + quién/cuándo (trazabilidad).
 - [x] **(Fase 3) Warning de captura errónea por estación** ✅ — en tab Flujo víbora: pulso diario
