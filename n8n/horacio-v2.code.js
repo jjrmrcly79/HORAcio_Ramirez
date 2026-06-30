@@ -84,6 +84,17 @@ if (isPost) {
     await pg("INSERT INTO horacio.programa_oficial_ot(programa_id,area,posicion,orden_trabajo,numero_parte,descripcion,pendiente,proceso_cuello,std_cuello,inicia,termina,tarde_dias,espera_smt) VALUES " + vals);
     return J({ ok: true, id: pid, n: items.length });
   }
+  if (body.action === 'set_cal_config') {
+    const t = (x) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(x || '')) ? String(x) : null);
+    const ti = t(body.turno_inicio), ci = t(body.comida_inicio), tf = t(body.turno_fin);
+    const lib = Number(body.liberacion_min), com = Number(body.comida_min);
+    if (!ti || !ci || !tf) return J({ ok: false, error: 'hora inválida (usa HH:MM)' });
+    if (!(lib >= 0 && lib <= 240) || !(com >= 0 && com <= 180)) return J({ ok: false, error: 'minutos fuera de rango' });
+    if (tf <= ti) return J({ ok: false, error: 'el fin de turno debe ser después del inicio' });
+    await pg("UPDATE horacio.calendario_config SET turno_inicio='" + ti + "',liberacion_min=" + Math.round(lib) +
+             ",comida_inicio='" + ci + "',comida_min=" + Math.round(com) + ",turno_fin='" + tf + "',actualizado_ts=now() WHERE id=1");
+    return J({ ok: true });
+  }
   return J({ ok: false, error: 'acción desconocida' });
 }
 
@@ -127,6 +138,10 @@ const progRows = await pg(
 const progOtRows = (progRows && progRows.length) ? await pg(
   "SELECT area,posicion,orden_trabajo,numero_parte,descripcion,pendiente,proceso_cuello,std_cuello,inicia,termina,tarde_dias,espera_smt " +
   "FROM horacio.programa_oficial_ot WHERE programa_id='" + progRows[0].id + "' ORDER BY area,posicion") : [];
+const calCfgRows = await pg(
+  "SELECT to_char(turno_inicio,'HH24:MI') AS turno_inicio,liberacion_min," +
+  "to_char(comida_inicio,'HH24:MI') AS comida_inicio,comida_min,to_char(turno_fin,'HH24:MI') AS turno_fin " +
+  "FROM horacio.calendario_config WHERE id=1");
 
 // agrupar v_ot_meta por OT
 const otMap = {};
@@ -202,11 +217,16 @@ const estMap = {};
 for (const r of estValRows) {
   (estMap[r.numero_parte] = estMap[r.numero_parte] || {})[r.proceso] = N(r.std);
 }
+const calCfg = (calCfgRows && calCfgRows[0]) ? {
+  turno_inicio: calCfgRows[0].turno_inicio, liberacion_min: N(calCfgRows[0].liberacion_min) || 0,
+  comida_inicio: calCfgRows[0].comida_inicio, comida_min: N(calCfgRows[0].comida_min) || 0,
+  turno_fin: calCfgRows[0].turno_fin
+} : { turno_inicio: '06:30', liberacion_min: 60, comida_inicio: '12:00', comida_min: 30, turno_fin: '15:30' };
 
 const DATA = {
   generado: new Date().toISOString().slice(0, 16).replace('T', ' '),
   hoy: new Date().toISOString().slice(0, 10),
-  ots, val, inc, plan, comentarios, motivos, vibDia, vibOt, estParts, estMap, progOficial,
+  ots, val, inc, plan, comentarios, motivos, vibDia, vibOt, estParts, estMap, progOficial, calCfg,
   resumen: {
     otTotal: inc.length, otConMeta: ots.length,
     sinEst: inc.filter((x) => x.sinEst).length,
@@ -264,6 +284,8 @@ tr.det td{background:#fafafa;padding:4px 14px 12px}
 .motbox{margin:8px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .motbox .cl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);font-weight:700}
 .motbox select{border:1px solid var(--bd);border-radius:8px;padding:5px 9px;font-size:12.5px;background:#fff;color:var(--tx);font-weight:600}
+.motclear{border:1px solid #fca5a5;background:#fff;color:#b91c1c;border-radius:8px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer}
+.motclear:hover{background:#fef2f2}
 .savemsg{font-size:11.5px}
 .snake{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--bd)}
 .snake:last-child{border:0}
@@ -276,6 +298,10 @@ tr.det td{background:#fafafa;padding:4px 14px 12px}
 .wiparrow{flex:0 0 auto;text-align:center;font-size:11px;color:var(--mut);min-width:54px}
 .wiparrow .w{display:block;font-weight:800;color:var(--warn);font-size:13px}
 .pospill{flex:0 0 auto;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px}
+.pospill.clk{cursor:pointer;border:1px solid transparent}
+.pospill.clk:hover{filter:brightness(.95)}
+.pospill.selon{outline:2px solid #111;outline-offset:1px}
+.snake.fhide{display:none}
 .pos-en_smt{background:#dbeafe;color:#1e40af}.pos-esperando_pth{background:#fde68a;color:#92400e}
 .pos-en_final{background:#e9d5ff;color:#6b21a8}.pos-terminada{background:#a7f3d0;color:#065f46}.pos-sin_avance{background:#f1f1f4;color:#71717a}
 .pulso td.hot{background:#fef2f2;color:#991b1b;font-weight:700}
@@ -304,21 +330,49 @@ tr.prow.dragging{opacity:.4}
 tr.prow.drop-into td{border-top:2px solid var(--accent)}
 button.lanzar{border:1px solid var(--ok);background:var(--ok);color:#fff;border-radius:99px;padding:9px 18px;font-size:13.5px;font-weight:700;cursor:pointer}
 button.lanzar:hover{filter:brightness(.96)}
+.calnav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.calnav button{border:1px solid var(--bd);background:#fff;border-radius:99px;width:34px;height:34px;font-size:16px;font-weight:700;cursor:pointer;line-height:1}
+.calnav button:disabled{opacity:.35;cursor:default}
+.calnav .cd{font-size:16px;font-weight:700;letter-spacing:-.01em}.calnav .cc{color:var(--mut);font-size:12px}
+.gantt{margin:10px 0}
+.glane{display:flex;align-items:stretch;gap:10px;margin-bottom:10px}
+.glane .ghd{flex:0 0 92px;font-size:12.5px;font-weight:700;display:flex;flex-direction:column;justify-content:center}
+.glane .ghd .gs{font-weight:500;color:var(--mut);font-size:11px}
+.gtrack{position:relative;flex:1 1 auto;height:46px;background:#f4f4f5;border:1px solid var(--bd);border-radius:9px;overflow:hidden}
+.gblk{position:absolute;top:3px;bottom:3px;background:var(--accent);color:#fff;border-radius:7px;padding:3px 7px;font-size:11px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.12);border:1px solid rgba(0,0,0,.05)}
+.gblk.late{background:var(--bad)}.gblk .b1{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.gblk .b2{opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gblk.cont{border-top-right-radius:0;border-bottom-right-radius:0}
+.gnp{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,#e4e4e7,#e4e4e7 5px,#d4d4d8 5px,#d4d4d8 10px);opacity:.7}
+.gnp .gnl{position:absolute;top:2px;left:3px;font-size:9px;color:#52525b;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.gaxis{position:relative;height:16px;margin:2px 0 0 102px;font-size:10px;color:var(--mut)}
+.gaxis span{position:absolute;transform:translateX(-50%);font-variant-numeric:tabular-nums}
+.agenda{margin-top:6px}
+.agenda .ah{font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin:12px 0 4px}
+.agrow{display:flex;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px solid var(--bd);font-size:13px}
+.agrow:last-child{border:0}
+.agrow .at{flex:0 0 118px;font-weight:700;font-variant-numeric:tabular-nums}
+.agrow .ao{flex:1 1 auto}.agrow .ao b{font-weight:680}.agrow .aq{flex:0 0 auto;color:var(--mut);font-size:12px;font-variant-numeric:tabular-nums}
+.cfgform{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.cfgform label{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+.cfgform input{border:1px solid var(--bd);border-radius:8px;padding:6px 9px;font-size:14px;font-weight:600;width:104px;font-variant-numeric:tabular-nums}
+.cfgform input:focus{outline:none;border-color:var(--accent)}
+.cfgform button{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:99px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer}
 </style></head><body>
 <header><h1>Horacio <span class="dot">V2</span> · Meta automática</h1><span class="sub" id="sub"></span></header>
 <div class="wrap">
-<div class="banner"><b>Versión de prueba de Juan.</b> Calcula la meta desde el Estándar x Hora y deja <b>capturar/editar</b> el estándar y el motivo. <b>No toca</b> lo que Daniel usa en vivo (su bot, panel y dashboard siguen igual). Escribe solo en las tablas nuevas.</div>
+<div class="banner"><b>Versión NexIA.</b> Calcula la meta desde el Estándar x Hora y deja <b>capturar/editar</b> el estándar y el motivo. <b>No toca</b> lo que Daniel usa en vivo (su bot, panel y dashboard siguen igual). Escribe solo en las tablas nuevas.</div>
 <div class="kpis" id="kpis"></div>
 <div class="tabs">
 <button data-t="plan" class="on">Plan del día</button>
 <button data-t="prog">Programa</button>
+<button data-t="cal">Calendario</button>
 <button data-t="vib">Flujo víbora</button>
 <button data-t="est">Estándar (capturar)</button>
 <button data-t="meta">Meta automática por OT</button>
 <button data-t="val">Validación vs Daniel</button>
 <button data-t="inc">Inconsistencias</button>
 </div>
-<div id="plan"></div><div id="prog" class="hide"></div><div id="vib" class="hide"></div><div id="est" class="hide"></div><div id="meta" class="hide"></div><div id="val" class="hide"></div><div id="inc" class="hide"></div>
+<div id="plan"></div><div id="prog" class="hide"></div><div id="cal" class="hide"></div><div id="vib" class="hide"></div><div id="est" class="hide"></div><div id="meta" class="hide"></div><div id="val" class="hide"></div><div id="inc" class="hide"></div>
 </div>
 <script>var DATA=${JSON.stringify(DATA)};</script>
 <script>
@@ -375,14 +429,27 @@ function motivoBox(orden){
  var opts=[['','— ¿por qué no corre? —'],['falta_material','Falta de material'],['falta_personal','Falta de personal'],['maquina','Máquina'],['otros','Otros']]
   .map(function(o){return '<option value="'+o[0]+'"'+(o[0]===cur?' selected':'')+'>'+esc(o[1])+'</option>';}).join('');
  return '<div class="motbox"><span class="cl">Motivo por el que no puede correr</span>'+
-   '<select class="mot" data-orden="'+esc(orden)+'">'+opts+'</select> <span class="savemsg muted"></span></div>';
+   '<select class="mot" data-orden="'+esc(orden)+'">'+opts+'</select> '+
+   '<button type="button" class="motclear" data-orden="'+esc(orden)+'"'+(cur?'':' style="display:none"')+'>✕ quitar</button>'+
+   ' <span class="savemsg muted"></span></div>';
 }
 function wireMotivos(scope){
  Array.prototype.forEach.call(document.querySelectorAll(scope+' select.mot'),function(sel){
   sel.onchange=function(){
-   var msg=sel.parentNode.querySelector('.savemsg'); if(msg){msg.textContent='guardando…';}
+   var box=sel.parentNode; var msg=box.querySelector('.savemsg'); var btn=box.querySelector('.motclear');
+   if(msg){msg.textContent='guardando…';}
    api({action:'set_motivo',orden:sel.getAttribute('data-orden'),motivo:sel.value}).then(function(r){
-    if(r&&r.ok){if(msg)msg.textContent='guardado ✓'; d.motivos[sel.getAttribute('data-orden')]=sel.value||undefined;}
+    if(r&&r.ok){if(msg)msg.textContent=sel.value?'guardado ✓':'quitado ✓'; d.motivos[sel.getAttribute('data-orden')]=sel.value||undefined; if(btn)btn.style.display=sel.value?'':'none';}
+    else{if(msg)msg.textContent=(r&&r.error)||'error';}
+   }).catch(function(){if(msg)msg.textContent='error de red';});
+  };
+ });
+ Array.prototype.forEach.call(document.querySelectorAll(scope+' button.motclear'),function(btn){
+  btn.onclick=function(){
+   var box=btn.parentNode; var sel=box.querySelector('select.mot'); var msg=box.querySelector('.savemsg');
+   if(msg){msg.textContent='quitando…';}
+   api({action:'set_motivo',orden:btn.getAttribute('data-orden'),motivo:''}).then(function(r){
+    if(r&&r.ok){if(sel)sel.value=''; d.motivos[btn.getAttribute('data-orden')]=undefined; btn.style.display='none'; if(msg)msg.textContent='quitado ✓';}
     else{if(msg)msg.textContent=(r&&r.error)||'error';}
    }).catch(function(){if(msg)msg.textContent='error de red';});
   };
@@ -464,7 +531,7 @@ wireMotivos('#meta');
   return '<div class="stg"><div class="sl"><span>'+lbl+'</span><span>'+(term||0)+'/'+ord+'</span></div><div class="pbar"><i style="width:'+pct+'%"></i></div></div>';
  }
  var rows=d.vibOt.map(function(o){
-  return '<div class="snake"><div class="snhead"><b>'+esc(o.orden)+'</b> <span class="pospill pos-'+o.pos+'">'+esc(POSL[o.pos]||o.pos)+'</span>'+
+  return '<div class="snake" data-pos="'+esc(o.pos)+'"><div class="snhead"><b>'+esc(o.orden)+'</b> <span class="pospill pos-'+o.pos+'">'+esc(POSL[o.pos]||o.pos)+'</span>'+
     '<div class="sd">'+esc(o.np||'—')+'</div></div>'+
     stage('SMT',o.smtTerm,o.smtOrd)+
     '<div class="wiparrow">→'+(o.wip>0?'<span class="w">⏳'+o.wip+'</span>':'')+'</div>'+
@@ -472,12 +539,27 @@ wireMotivos('#meta');
  }).join('');
  var cont={};d.vibOt.forEach(function(o){cont[o.pos]=(cont[o.pos]||0)+1;});
  var wipTot=d.vibOt.reduce(function(a,o){return a+o.wip;},0);
- var chips=Object.keys(POSL).filter(function(k){return cont[k];}).map(function(k){
-   return '<span class="pospill pos-'+k+'" style="margin-right:6px">'+POSL[k]+': '+cont[k]+'</span>';}).join('');
+ var chips='<span class="pospill clk vibflt" data-pos="" style="margin-right:6px;background:#e5e7eb;color:#374151">todas: '+d.vibOt.length+'</span>'+
+   Object.keys(POSL).filter(function(k){return cont[k];}).map(function(k){
+   return '<span class="pospill clk vibflt pos-'+k+'" data-pos="'+k+'" style="margin-right:6px">'+POSL[k]+': '+cont[k]+'</span>';}).join('');
  var wipCard='<div class="card"><h2>WIP por OT — dónde está cada orden en el flujo</h2>'+
+   '<div class="muted" style="margin:-4px 0 8px;font-size:11.5px">Toca una etapa para filtrar las órdenes (ej. <b>en SMT</b>). Toca de nuevo o <b>todas</b> para quitar el filtro.</div>'+
    '<div style="margin-bottom:10px">'+chips+'<span class="chip" style="font-weight:700">WIP total entre SMT y final: '+wipTot+' pzs</span></div>'+
-   (rows||'<div class="empty">Sin órdenes.</div>')+'</div>';
+   '<div id="vibrows">'+(rows||'<div class="empty">Sin órdenes.</div>')+'</div></div>';
  $('vib').innerHTML=pulsoCard+wipCard;
+ // filtro por etapa (clic en chip)
+ var fActive='';
+ function applyVibFilter(){
+  Array.prototype.forEach.call(document.querySelectorAll('#vibrows .snake'),function(el){
+   if(!fActive||el.getAttribute('data-pos')===fActive)el.classList.remove('fhide');else el.classList.add('fhide');
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#vib .pospill.vibflt'),function(c){
+   if(fActive&&c.getAttribute('data-pos')===fActive)c.classList.add('selon');else c.classList.remove('selon');
+  });
+ }
+ Array.prototype.forEach.call(document.querySelectorAll('#vib .pospill.vibflt'),function(c){
+  c.onclick=function(){var p=c.getAttribute('data-pos')||'';fActive=(fActive===p)?'':p;applyVibFilter();};
+ });
 })();
 
 // --- EDITOR DE ESTÁNDAR (capturar/editar) ---
@@ -734,6 +816,178 @@ wireMotivos('#meta');
  render();
 })();
 
+// --- CALENDARIO detallado por hora (Fase A · por área) ---
+(function(){
+ var MES=['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+ var DIA=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+ function hm2min(s){var p=String(s||'0:0').split(':');return (parseInt(p[0],10)||0)*60+(parseInt(p[1],10)||0);}
+ function min2hm(m){m=Math.round(m);var h=Math.floor(m/60),mm=m%60;return (h<10?'0':'')+h+':'+(mm<10?'0':'')+mm;}
+ function iso(dt){return dt.toISOString().slice(0,10);}
+ function fmtLong(s){var dt=new Date(s+'T00:00:00');return DIA[dt.getDay()]+' '+parseInt(s.split('-')[2],10)+'-'+MES[parseInt(s.split('-')[1],10)];}
+ function isWeekend(dt){var g=dt.getDay();return g===0||g===6;}
+
+ // vence / factible por OT (del plan del día) para marcar atrasos
+ var vBy={},fBy={};
+ d.plan.forEach(function(p){vBy[p.orden]=p.vence;fBy[p.orden]=p.factible;});
+
+ var cfg={turno_inicio:d.calCfg.turno_inicio,liberacion_min:d.calCfg.liberacion_min,comida_inicio:d.calCfg.comida_inicio,comida_min:d.calCfg.comida_min,turno_fin:d.calCfg.turno_fin};
+
+ // ventanas productivas del día (resta liberación al inicio y comida en medio)
+ function windows(){
+  var ti=hm2min(cfg.turno_inicio),tf=hm2min(cfg.turno_fin);
+  var libEnd=ti+(cfg.liberacion_min||0);
+  var cs=hm2min(cfg.comida_inicio),ce=cs+(cfg.comida_min||0);
+  if(libEnd>=tf)return [];
+  var wins=[];
+  if((cfg.comida_min||0)>0 && cs>libEnd && cs<tf){
+   wins.push([libEnd,Math.min(cs,tf)]);
+   if(ce<tf)wins.push([Math.max(ce,libEnd),tf]);
+  } else { wins.push([libEnd,tf]); }
+  return wins.filter(function(w){return w[1]>w[0];});
+ }
+ function prodMinDay(){return windows().reduce(function(a,w){return a+(w[1]-w[0]);},0);}
+
+ var state={start:d.hoy,dayIdx:0};
+
+ function isLate(b){
+  var v=vBy[b.o.orden];
+  if(v&&v<b.date)return true;            // la franja cae después de la fecha de entrega
+  if(fBy[b.o.orden]===false)return true; // el plan del día ya marcó que no alcanza
+  return false;
+ }
+
+ // expande el programa vigente a bloques absolutos (fecha + min del día)
+ function expand(){
+  var prog=d.progOficial;
+  if(!prog)return {blocks:[],days:[],noStd:[]};
+  var wins=windows();
+  if(!wins.length)return {blocks:[],days:[],noStd:[]};
+  var ti=hm2min(cfg.turno_inicio),tf=hm2min(cfg.turno_fin);
+  var blocks=[],noStd=[];
+  ['SMT','PTH'].forEach(function(area){
+   var lines=Math.max(1,(area==='SMT'?prog.lineasSmt:prog.lineasPth)||1);
+   var arr=prog.ots.filter(function(o){return o.area===area;}).slice().sort(function(a,b){return (a.pos||0)-(b.pos||0);});
+   var cur=new Date(state.start+'T00:00:00');
+   while(isWeekend(cur))cur.setDate(cur.getDate()+1);
+   var wi=0,ptr=wins[0][0],guard=0;
+   arr.forEach(function(o){
+    var rate=(o.stdCuello||0)*lines;           // pzs/hr efectivas del área
+    if(!(rate>0)){noStd.push(o);return;}
+    var remain=(o.pendiente||0)/rate*60;        // minutos productivos necesarios
+    if(remain<=0)return;
+    while(remain>0.5 && guard<5000){
+     guard++;
+     var avail=wins[wi][1]-ptr;
+     if(avail<=0.5){                            // saltar a la siguiente ventana / día
+      wi++;
+      if(wi>=wins.length){wi=0;do{cur.setDate(cur.getDate()+1);}while(isWeekend(cur));}
+      ptr=wins[wi][0];
+      continue;
+     }
+     var use=Math.min(avail,remain);
+     blocks.push({area:area,o:o,date:iso(cur),s:ptr,e:ptr+use,pzs:use/60*rate,full:(use>=remain-0.5)});
+     ptr+=use; remain-=use;
+    }
+   });
+  });
+  var dset={};blocks.forEach(function(b){dset[b.date]=1;});
+  return {blocks:blocks,days:Object.keys(dset).sort(),noStd:noStd,ti:ti,tf:tf,wins:wins};
+ }
+
+ function wireCfg(){
+  var sv=$('cf_save');if(!sv)return;
+  sv.onclick=function(){
+   var msg=$('cf_msg');if(msg){msg.textContent='guardando…';msg.style.color='';}
+   var p={action:'set_cal_config',turno_inicio:$('cf_ti').value,liberacion_min:$('cf_lib').value,comida_inicio:$('cf_ci').value,comida_min:$('cf_com').value,turno_fin:$('cf_tf').value};
+   api(p).then(function(r){
+    if(r&&r.ok){
+     cfg.turno_inicio=p.turno_inicio;cfg.liberacion_min=parseInt(p.liberacion_min,10)||0;cfg.comida_inicio=p.comida_inicio;cfg.comida_min=parseInt(p.comida_min,10)||0;cfg.turno_fin=p.turno_fin;
+     d.calCfg=cfg;render();
+     var m2=$('cf_msg');if(m2){m2.textContent='guardado ✓';m2.style.color='var(--ok)';}
+    } else { if(msg){msg.textContent=(r&&r.error)||'error';msg.style.color='var(--bad)';} }
+   }).catch(function(){var m2=$('cf_msg');if(m2){m2.textContent='error de red';m2.style.color='var(--bad)';}});
+  };
+ }
+
+ function render(){
+  var prog=d.progOficial;
+  var cform='<div class="card"><h2>Modelo de horario del turno</h2>'+
+    '<div class="muted" style="margin-bottom:10px">Horas productivas = (fin − inicio) − liberación − comida. Cambia y dale guardar; el calendario se recalcula.</div>'+
+    '<div class="cfgform">'+
+    '<label>Inicio turno<input id="cf_ti" type="time" value="'+esc(cfg.turno_inicio)+'"></label>'+
+    '<label>Liberación (min)<input id="cf_lib" type="number" min="0" max="240" value="'+cfg.liberacion_min+'"></label>'+
+    '<label>Comida inicia<input id="cf_ci" type="time" value="'+esc(cfg.comida_inicio)+'"></label>'+
+    '<label>Comida (min)<input id="cf_com" type="number" min="0" max="180" value="'+cfg.comida_min+'"></label>'+
+    '<label>Fin turno<input id="cf_tf" type="time" value="'+esc(cfg.turno_fin)+'"></label>'+
+    '<button id="cf_save">Guardar horario</button><span id="cf_msg" class="muted"></span>'+
+    '</div><div class="muted" style="margin-top:8px">Hoy: <b>'+(prodMinDay()/60).toFixed(1)+' h productivas/día</b> ('+windows().map(function(w){return min2hm(w[0])+'–'+min2hm(w[1]);}).join(' + ')+').</div></div>';
+
+  if(!prog){
+   $('cal').innerHTML=cform+'<div class="card"><div class="empty">Aún no hay <b>programa oficial vigente</b>. Ve al tab <b>Programa</b>, acomoda el orden y dale <b>Lanzar como programa oficial</b>. El calendario se arma sobre ese programa.</div></div>';
+   wireCfg();return;
+  }
+  var ex=expand();
+  if(!ex.days.length){
+   $('cal').innerHTML=cform+'<div class="card"><div class="empty">No hay OT programables con estándar en el programa vigente'+(ex.noStd&&ex.noStd.length?' ('+ex.noStd.length+' sin estándar)':'')+'.</div></div>';
+   wireCfg();return;
+  }
+  if(state.dayIdx>=ex.days.length)state.dayIdx=ex.days.length-1;
+  if(state.dayIdx<0)state.dayIdx=0;
+  var day=ex.days[state.dayIdx];
+  var span=ex.tf-ex.ti;
+  function pc(min){return (min-ex.ti)/span*100;}
+
+  var nav='<div class="calnav">'+
+    '<button id="cal_prev"'+(state.dayIdx<=0?' disabled':'')+'>‹</button>'+
+    '<div><div class="cd">'+esc(fmtLong(day))+'</div><div class="cc">día '+(state.dayIdx+1)+' de '+ex.days.length+' · arranque del plan: '+esc(fmtLong(state.start))+'</div></div>'+
+    '<button id="cal_next"'+(state.dayIdx>=ex.days.length-1?' disabled':'')+'>›</button>'+
+    '<span class="cc" style="margin-left:auto">Arranque <input id="cal_start" type="date" value="'+esc(state.start)+'" style="border:1px solid var(--bd);border-radius:8px;padding:5px 8px;font-size:13px"></span></div>';
+
+  function lane(area,label,sub){
+   var bs=ex.blocks.filter(function(b){return b.area===area&&b.date===day;});
+   var np='';
+   var libEnd=ex.ti+(cfg.liberacion_min||0);
+   if(libEnd>ex.ti)np+='<div class="gnp" style="left:0;width:'+pc(libEnd)+'%"><span class="gnl">liberación</span></div>';
+   if((cfg.comida_min||0)>0){var cs=hm2min(cfg.comida_inicio),ce=cs+cfg.comida_min;if(cs<ex.tf&&ce>ex.ti)np+='<div class="gnp" style="left:'+pc(Math.max(cs,ex.ti))+'%;width:'+(pc(Math.min(ce,ex.tf))-pc(Math.max(cs,ex.ti)))+'%"><span class="gnl">comida</span></div>';}
+   var blk=bs.map(function(b){
+    var late=isLate(b),w=pc(b.e)-pc(b.s);
+    return '<div class="gblk'+(b.full?'':' cont')+(late?' late':'')+'" style="left:'+pc(b.s)+'%;width:'+w+'%" title="'+esc(b.o.orden)+' '+min2hm(b.s)+'–'+min2hm(b.e)+'">'+
+      '<div class="b1">'+esc(b.o.orden)+(late?' ⚠':'')+'</div><div class="b2">'+esc(b.o.np||'')+' · '+Math.round(b.pzs)+' pz</div></div>';
+   }).join('');
+   return '<div class="glane"><div class="ghd">'+label+'<span class="gs">'+sub+'</span></div><div class="gtrack">'+np+blk+'</div></div>';
+  }
+  var axis='';
+  for(var h=Math.ceil(ex.ti/60);h*60<=ex.tf;h++){axis+='<span style="left:'+pc(h*60)+'%">'+min2hm(h*60)+'</span>';}
+  var gantt='<div class="card"><h2>Qué corre a cada hora — '+esc(fmtLong(day))+'</h2>'+
+    '<div class="gantt">'+lane('SMT','SMT','SMT '+Math.max(1,prog.lineasSmt||1)+' lín.')+lane('PTH','Final','PTH '+Math.max(1,prog.lineasPth||1)+' lín.')+'</div>'+
+    '<div class="gaxis">'+axis+'</div>'+
+    '<div class="muted" style="margin-top:10px;font-size:11.5px">Cada carril corre su cola del programa oficial desde el arranque, a ritmo del cuello × nº de líneas. Las franjas rayadas son liberación y comida (no producen). ⚠ = la OT cae tras su fecha de entrega o no alcanza.</div></div>';
+
+  function agenda(area,label){
+   var bs=ex.blocks.filter(function(b){return b.area===area&&b.date===day;});
+   if(!bs.length)return '<div class="ah">'+label+'</div><div class="muted" style="padding:4px 0">— sin trabajo este día —</div>';
+   return '<div class="ah">'+label+'</div>'+bs.map(function(b){
+    var late=isLate(b);
+    var mark=late?' <span class="wbadge bad">'+(vBy[b.o.orden]&&vBy[b.o.orden]<b.date?'vence antes':'no alcanza')+'</span>':'';
+    var cont=b.full?'':' <span class="muted">(continúa)</span>';
+    return '<div class="agrow"><span class="at">'+min2hm(b.s)+'–'+min2hm(b.e)+'</span>'+
+      '<span class="ao"><b>'+esc(b.o.orden)+'</b> '+esc(b.o.np||'')+' <span class="muted">'+esc(b.o.desc||'')+'</span>'+mark+cont+'</span>'+
+      '<span class="aq">'+Math.round(b.pzs)+' pz</span></div>';
+   }).join('');
+  }
+  var ag='<div class="card"><h2>Agenda del día (para imprimir / mandar)</h2><div class="agenda">'+agenda('SMT','SMT — subensamble')+agenda('PTH','Final (PTH → Empaque)')+'</div></div>';
+  var noStdMsg=(ex.noStd&&ex.noStd.length)?'<div class="warn warn2"><b>⚠ '+ex.noStd.length+' OT sin estándar</b> no se pueden ubicar en el calendario: '+ex.noStd.map(function(o){return esc(o.orden);}).join(', ')+'. Captúralas en el tab Estándar.</div>':'';
+
+  $('cal').innerHTML=cform+nav+gantt+ag+noStdMsg;
+  wireCfg();
+  var pv=$('cal_prev'),nx=$('cal_next'),st=$('cal_start');
+  if(pv)pv.onclick=function(){state.dayIdx--;render();};
+  if(nx)nx.onclick=function(){state.dayIdx++;render();};
+  if(st)st.onchange=function(){if(/^\d{4}-\d{2}-\d{2}$/.test(st.value)){state.start=st.value;state.dayIdx=0;render();}};
+ }
+ render();
+})();
+
 // --- VALIDACION ---
 var vr=d.val.map(function(v){
  var cls=v.dif==null?'p-mut':Math.abs(v.dif)<2?'p-ok':Math.abs(v.dif)<15?'p-warn':'p-bad';
@@ -760,7 +1014,7 @@ $('inc').innerHTML='<div class="card"><h2>Inconsistencias a revisar con Daniel</
 var btns=document.querySelectorAll('.tabs button');
 btns.forEach(function(b){b.onclick=function(){
  btns.forEach(function(x){x.classList.remove('on');});b.classList.add('on');
- ['plan','prog','vib','est','meta','val','inc'].forEach(function(t){$(t).classList.toggle('hide',t!==b.dataset.t);});
+ ['plan','prog','cal','vib','est','meta','val','inc'].forEach(function(t){$(t).classList.toggle('hide',t!==b.dataset.t);});
 };});
 })();
 </script></body></html>`;
