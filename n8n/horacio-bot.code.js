@@ -17,8 +17,35 @@ const AI = '<ANTHROPIC_API_KEY>'; // Claude Haiku para la plática de la encuest
 const VALIDATOR = 5367409334; // chat ESPEJO: recibe copia de TODO para validar el piloto (poner null para apagar)
 const pgh = { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' };
 const H = this.helpers;
-const pg = async (q) => await H.httpRequest({ method: 'POST', url: PG, headers: pgh, body: { query: q }, json: true });
-const tgRaw = async (m, p) => await H.httpRequest({ method: 'POST', url: TG + '/' + m, body: p, json: true });
+let _activeChat = null; // chat de la líder en curso (para avisarle si se cae la red al guardar)
+// --- Resiliencia de red: timeout + reintento de errores transitorios (blip de red saliente del VPS) ---
+// Sin esto, un "socket hang up"/"ECONNRESET" tira TODA la captura (el líder no puede subir datos).
+const TRANSIENT = /ECONNRESET|socket hang up|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|ENETUNREACH|EPIPE|timeout/i;
+const _sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const _isTransient = (e) => TRANSIENT.test(String((e && (e.message || e.code || (e.cause && e.cause.code))) || ''));
+const httpReq = async (opts, retries) => {
+  const max = (retries == null) ? 2 : retries; // intentos = max + 1
+  let last;
+  for (let i = 0; i <= max; i++) {
+    try { return await H.httpRequest(Object.assign({ timeout: 15000 }, opts)); }
+    catch (e) { last = e; if (i === max || !_isTransient(e)) throw e; await _sleep(600 * (i + 1)); }
+  }
+  throw last;
+};
+const _isRead = (q) => /^\s*(select|with)\b/i.test(q) && !/\b(insert|update|delete)\b/i.test(q);
+// Lecturas: reintentar (idempotente). Escrituras: 1 intento (HxH es append-only → un reintento
+// crearía fila duplicada) y, si se cae la red, avisa a la líder en vez de quedarse en silencio.
+const pg = async (q) => {
+  const read = _isRead(q);
+  try { return await httpReq({ method: 'POST', url: PG, headers: pgh, body: { query: q }, json: true }, read ? 2 : 0); }
+  catch (e) {
+    if (!read && _activeChat && _isTransient(e)) {
+      try { await tgRaw('sendMessage', { chat_id: _activeChat, text: '⚠️ Se cayó la red un momento y no alcancé a guardar. Por favor vuelve a tocar el botón 🙏' }); } catch (_) {}
+    }
+    throw e;
+  }
+};
+const tgRaw = async (m, p) => await httpReq({ method: 'POST', url: TG + '/' + m, body: p, json: true }, 2);
 let _names = null;
 const whoIs = async (cid) => {
   if (!_names) { _names = {}; try { const r = await pg("SELECT chat_id, nombre, rol FROM horacio.personas WHERE chat_id IS NOT NULL"); for (const p of r) _names[p.chat_id] = p.nombre + ' (' + p.rol + ')'; } catch (e) {} }
@@ -320,6 +347,7 @@ const mid = (cbq && cbq.message && cbq.message.message_id) || null;
 const text = (msg && msg.text) || '';
 const photo = (msg && msg.photo && msg.photo.length) ? msg.photo[msg.photo.length - 1].file_id : null;
 const data = (cbq && cbq.data) || '';
+_activeChat = chat_id; // para avisar a esta líder si una escritura falla por red
 const cbid = (cbq && cbq.id) || '';
 if (cbid) { try { await tg('answerCallbackQuery', { callback_query_id: cbid }); } catch (e) {} }
 
@@ -357,7 +385,7 @@ const FB_SYS = 'Eres Horacio Ramírez, el compañero del hora por hora de la pla
 const askHoracio = async (msgs, ctx) => {
   try {
     const sys = FB_SYS + (ctx ? `\n\nLo que ya sabes de ella (úsalo con tacto, NUNCA lo cites literal; solo para acompañarla mejor): ${ctx}` : '');
-    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 220, system: sys, messages: msgs }, json: true });
+    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', timeout: 20000, headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 220, system: sys, messages: msgs }, json: true });
     const t = r && r.content && r.content[0] && r.content[0].text;
     return t || 'Aquí te leo 🙏';
   } catch (e) { return 'Gracias por contarme 🙏 (no pude responder bien ahorita, pero quedó guardado).'; }
@@ -370,14 +398,14 @@ const ROOT_SYS = 'Eres Horacio Ramírez, compañero del piso de Mapartel. Estás
 const askRoot = async (causaTxt, linea, conv) => {
   try {
     const sys = ROOT_SYS + `\n\nPARO: línea ${linea} · causa reportada "${causaTxt}".`;
-    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 180, system: sys, messages: [{ role: 'user', content: 'Plática hasta ahora:\n' + conv }] }, json: true });
+    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', timeout: 20000, headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 180, system: sys, messages: [{ role: 'user', content: 'Plática hasta ahora:\n' + conv }] }, json: true });
     return ((r && r.content && r.content[0] && r.content[0].text) || '').trim();
   } catch (e) { return ''; }
 };
 const resumirRoot = async (causaTxt, linea, conv) => {
   try {
     const sys = 'Resume en UNA sola frase, sencilla y accionable, la causa raíz del paro a partir de esta plática (estilo Lean, sin regaños). Si de plano no hay info, responde solo "—".';
-    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 80, system: sys, messages: [{ role: 'user', content: `Paro en ${linea}, causa reportada "${causaTxt}".\n\n${conv}` }] }, json: true });
+    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', timeout: 20000, headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 80, system: sys, messages: [{ role: 'user', content: `Paro en ${linea}, causa reportada "${causaTxt}".\n\n${conv}` }] }, json: true });
     const t = ((r && r.content && r.content[0] && r.content[0].text) || '').trim();
     return (t === '—') ? '' : t;
   } catch (e) { return ''; }
@@ -400,7 +428,7 @@ const resumirInsight = async (msgs) => {
   const sys = 'Ayudas a Horacio a recordar cómo apoyar mejor a una persona del piso. Lee la plática y resume en UNA frase, en tono de apoyo y respeto, lo más útil para acompañarla (qué la motiva, qué le pesa, cómo prefiere que le hablen). NO diagnostiques, no etiquetes, no juzgues. Si no hay nada relevante, responde solo "—".';
   try {
     const conv = msgs.map((m) => (m.role === 'user' ? 'Ella: ' : 'Horacio: ') + m.content).join('\n');
-    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 120, system: sys, messages: [{ role: 'user', content: conv }] }, json: true });
+    const r = await H.httpRequest({ method: 'POST', url: 'https://api.anthropic.com/v1/messages', timeout: 20000, headers: { 'x-api-key': AI, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: { model: 'claude-haiku-4-5-20251001', max_tokens: 120, system: sys, messages: [{ role: 'user', content: conv }] }, json: true });
     return ((r && r.content && r.content[0] && r.content[0].text) || '').trim();
   } catch (e) { return ''; }
 };

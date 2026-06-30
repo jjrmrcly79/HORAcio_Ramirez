@@ -1,5 +1,33 @@
 # AGENTS.md — Horacio (bot HxH Mapartel · SN-04 v2)
 
+## Bitácora 2026-06-30 — Incidente de red + endurecimiento del bot (resiliencia HTTP)
+
+**Reporte:** "los bots de Mapartel fallan, las líderes no pueden subir datos".
+**Diagnóstico (n8n):** 5 ejecuciones en `error` del bot `Horacio - Webhook` en ventana
+~12:42–13:35 MX, todas `socket hang up` / `read ECONNRESET` en el nodo "Horacio Bot"
+(una colgada 72s). Causa raíz: las llamadas HTTP salientes (`pg()`/`tgRaw()`, y 4 a
+`api.anthropic.com`) NO tenían `timeout` ni reintento → un blip de red saliente del VPS
+abortaba TODA la captura → la líder se quedaba sin confirmación = "no puedo subir datos".
+Confirmado contra BD: slot 11:30-12:30 quedó corto (8 vs ~11) y 12:30-13:30 en 0 al momento.
+Servicios sanos al revisar (Telegram/Supabase/n8n/Anthropic responden); el blip ya había pasado.
+
+**Fix desplegado (hot, nodo Code, sin re-registrar webhook):**
+- `httpReq()` central: `timeout: 15s` (mata el cuelgue de 72s) + reintento de errores
+  TRANSITORIOS (`ECONNRESET|socket hang up|ETIMEDOUT|...`) con backoff.
+- **Lecturas (SELECT/WITH-solo-lectura): reintento ×2** (idempotente).
+- **Escrituras (INSERT/UPDATE): 1 intento, SIN reintento** → HxH es append-only, un reintento
+  duplicaría fila. Si la escritura falla por red, avisa a la líder ("⚠️ se cayó la red,
+  vuelve a tocar el botón 🙏") vía `_activeChat`, en vez de silencio.
+- Telegram: reintento ×2 (mensaje duplicado es inocuo).
+- 4 llamadas Anthropic: `timeout: 20s` (ya tenían try/catch, ahora no cuelgan).
+- QA: `node --check` OK + 16 asserts unitarios (clasificación lectura/escritura, retry
+  solo transitorio, escritura sin reintento). Deploy `push_code.py` → PUT ok.
+
+**Pendiente menor:** un blip que pegue justo en el INSERT padre+detalle del HxH (línea ~790)
+puede dejar fila huérfana sin detalle; aceptable (la líder re-toca). Si reincide mucho,
+evaluar dedupe/idempotencia en `hora_por_hora`.
+
+
 ## Qué es
 Bot de **Telegram** (`@HoracioRamirez_bot`) que lleva el **Hora por Hora** del piso
 de producción de Mapartel: registra HxH, paros, faltantes y calidad; escala a los
