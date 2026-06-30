@@ -192,13 +192,13 @@ if (b && b.admin) {
       const age = Number(p.age_min), nag = Number(p.nag_min), nivel = Number(p.nivel || 0);
       if (nivel === 0 && age >= T2 && D) {
         await pg(`UPDATE horacio.paros SET escalado_nivel=1, escalado_ts=now(), escalado_a='${D.id}', ultimo_recordatorio=now() WHERE id='${p.id}'`);
-        await tg('sendMessage', { chat_id: D.chat_id, text: `⚠️ ESCALAMIENTO — paro sin atender ${Math.round(age)} min\n🛑 ${p.linea}: ${p.causa}\nNadie lo ha acusado todavía. ¿Puedes apoyar?`, reply_markup: { inline_keyboard: [[{ text: 'Visto 👍', callback_data: 'ack_' + p.id }]] } });
+        await tg('sendMessage', { chat_id: D.chat_id, text: `⚠️ ESCALAMIENTO — paro sin atender ${Math.round(age)} min\n🛑 ${p.linea}: ${p.causa}\nNadie ha avisado que va todavía. ¿Puedes apoyar?`, reply_markup: { inline_keyboard: [[{ text: 'Visto 👍', callback_data: 'ack_' + p.id }]] } });
         escal++; continue;
       }
       const chat = (nivel === 1 && D) ? D.chat_id : p.owner_chat;
       if (chat && nag >= T1) {
         await pg(`UPDATE horacio.paros SET ultimo_recordatorio=now() WHERE id='${p.id}'`);
-        await tg('sendMessage', { chat_id: chat, text: `🔔 Recordatorio — paro SIN acuse (${Math.round(age)} min)\n🛑 ${p.linea}: ${p.causa}\nAcúsalo para que la líder sepa que vas.`, reply_markup: { inline_keyboard: [[{ text: 'Visto 👍', callback_data: 'ack_' + p.id }]] } });
+        await tg('sendMessage', { chat_id: chat, text: `🔔 Recordatorio — paro SIN aviso (${Math.round(age)} min)\n🛑 ${p.linea}: ${p.causa}\nAvísale que ya vas, para que la líder lo sepa.`, reply_markup: { inline_keyboard: [[{ text: 'Visto 👍', callback_data: 'ack_' + p.id }]] } });
         nags++;
       }
     }
@@ -651,7 +651,7 @@ if (action === 'paro_causa') {
   const ins = await pg(`INSERT INTO horacio.paros(linea_id,causa_codigo,ts_inicio,reporto_chat_id,escalado_a,estado,notificado_ts) VALUES('${linea_id}','${esc(codigo)}',now(),${chat_id},${owner ? `'${owner.id}'` : 'NULL'},'abierto',${owner ? 'now()' : 'NULL'}) RETURNING id`);
   const paroid = ins[0].id;
   await setSess('paro', 'idle', s.d);
-  if (owner) await tg('sendMessage', { chat_id: owner.chat_id, text: `🛑 Paro en ${esc(lnombre)}: ${causaTxt}. Acúsalo para que la líder sepa que vas.`, reply_markup: { inline_keyboard: [[{ text: 'Visto 👍', callback_data: 'ack_' + paroid }]] } });
+  if (owner) await tg('sendMessage', { chat_id: owner.chat_id, text: `🛑 Paro en ${esc(lnombre)}: ${causaTxt}. Avísale que ya vas, para que la líder lo sepa.`, reply_markup: { inline_keyboard: [[{ text: 'Visto 👍', callback_data: 'ack_' + paroid }]] } });
   const aviso = owner ? `Ya le avisé a ${esc(owner.nombre)}.` : '(Aún no hay responsable de esa área dado de alta — queda registrado.)';
   await tg('sendMessage', { chat_id, text: `Anotado el paro en ${esc(lnombre)} (${causaTxt}). ${aviso} Cuando se resuelva, toca aquí:`, reply_markup: { inline_keyboard: [[{ text: '✅ Ya quedó', callback_data: 'pclose_' + paroid }]] } });
   return [{ json: { action, paroid } }];

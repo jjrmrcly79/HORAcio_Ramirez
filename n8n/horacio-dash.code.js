@@ -80,12 +80,24 @@ if (q.data !== '1') {
 '.embk{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:14px}.embk .v{font-size:23px;font-weight:680;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.embk .v small{font-size:13px;color:var(--mut);font-weight:500;margin-left:3px}.embk .l{color:var(--mut);font-size:12px;margin-top:2px}',
 '.foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;color:var(--mut);font-size:12px;flex-wrap:wrap}',
 '.foot .pw{display:flex;align-items:center;gap:6px;color:#52525b}.foot .pw b{color:var(--accent);font-weight:700}',
+'.paro{border:1px solid var(--bd);border-radius:12px;padding:11px 13px;margin-bottom:9px;background:#fafafa}',
+'.paro .phead{font-size:14px}.paro .muted{font-weight:400}',
+'.praiz{margin-top:6px;font-size:13px;background:#f3effa;border-left:3px solid var(--accent);padding:7px 10px;border-radius:8px;line-height:1.45}',
+'.ppend{margin-top:6px;font-size:12.5px;color:var(--warn);font-weight:600}',
+'.pcorr{margin-top:5px;font-size:12.5px;color:var(--mut)}',
+'.pqtog{margin-top:7px;font-size:12px;color:var(--accent);font-weight:600;cursor:pointer;user-select:none}',
+'.pqbox{margin-top:6px;padding-left:4px;border-left:2px solid var(--bd)}',
+'.pqi{font-size:12.5px;margin:4px 0 6px 8px;line-height:1.4}.pqr{color:var(--mut)}',
+'.recttl{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);font-weight:700;margin:14px 0 6px}',
+'.recrow{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid var(--bd)}',
+'.recrow .recn{color:var(--bad);font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}',
 '</style></head><body>',
 '<header><span class="brand"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="5.5" width="13" height="13" rx="3" transform="rotate(45 12 12)" fill="#7c3aed"/></svg><h1>Horacio <span class="dot">· Mapartel</span></h1></span><span class="sub" id="sub">cargando…</span></header>',
 '<div class="wrap">',
 '<div class="kpis" id="kpis"></div>',
 '<div id="revisar"></div>',
 '<div class="card"><h2>Flujo de hoy — ¿dónde se atora?</h2><div id="flujo"><div class="empty">cargando…</div></div><div id="cuello"></div><div id="stageDetail"></div></div>',
+'<div class="card" id="parosCard" style="display:none"><h2>🛑 Paros de hoy · causa raíz</h2><div id="parosHoy"></div><div id="parosRec"></div></div>',
 '<div class="grid2"><div class="card"><h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px">Cumplimiento por tablero (hoy) <span id="tabTog" style="font-size:12px;font-weight:400;color:var(--accent);cursor:pointer;white-space:nowrap">ver todos ▾</span></h2><div id="tableros" style="display:none"></div></div>',
 '<div class="card"><h2>¿Quién está subiendo su info? (hoy)</h2><div id="hb"></div></div></div>',
 '<div class="card" id="embCard" style="display:none"><h2>📦 Embarques — tarjetas retiradas (hoy)</h2>',
@@ -108,6 +120,7 @@ if (q.data !== '1') {
 'function hhmm(t){if(!t)return"—";var d=new Date(t);if(isNaN(d))return"—";return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}',
 'function el(h){var d=document.createElement("div");d.innerHTML=h;return d.firstChild}',
 'function fmt(n){n=Number(n)||0;return n.toLocaleString("es-MX")}',
+'function h(s){return String(s==null?"":s).replace(/[&<>\\"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c];});}',
 'function renderFlujo(d){var f=d.flujo||[];flujoData=f;var html="";',
 '  if(!openApplied){openApplied=true;var wo=new URLSearchParams(location.search).get("open");if(wo){for(var j=0;j<f.length;j++){if((f[j].grupo||"").toLowerCase()===wo.toLowerCase()||(f[j].etapa||"").toLowerCase()===wo.toLowerCase()){openStage=j;break;}}}}',
 '  f.forEach(function(s,i){if(i>0)html+="<span class=\\"arrow\\">\\u25B6</span>";',
@@ -154,6 +167,21 @@ if (q.data !== '1') {
 '  var lbl=(s.ramas&&s.ramas.length)?"vertientes (l\\u00EDneas paralelas) \\u2014 piezas por estaci\\u00F3n":"estaciones en orden de proceso";',
 '  box.innerHTML="<div class=\\"cuellobox\\"><div class=\\"muted\\" style=\\"margin-bottom:6px\\"><b>"+s.etapa+"</b> \\u2014 "+lbl+note+":</div>"+renderRamas(s)+"</div>";}',
 'function toggleStage(i){openStage=(openStage===i?-1:i);renderStageDetail();}',
+'function pqToggle(i){var e=document.getElementById("pq_"+i);if(e)e.style.display=(e.style.display==="none"?"block":"none");}',
+'function renderParos(d){var P=d.parosHoy||[],R=d.parosRecurrentes||[];var card=document.getElementById("parosCard");if(!card)return;',
+'  if(!P.length&&!R.length){card.style.display="none";return;}card.style.display="";',
+'  var h1=P.length?"":"<div class=\\"empty\\">Sin paros hoy 🎉</div>";',
+'  P.forEach(function(p,i){',
+'    var ic=p.estado==="abierto"?"🔴":"✅";var dur=p.dur!=null?(p.dur+" min"):"—";',
+'    var raiz=p.causaRaiz?("<div class=\\"praiz\\">🎯 <b>Causa raíz:</b> "+h(p.causaRaiz)+"</div>"):(p.estado!=="abierto"?"<div class=\\"ppend\\">⚠ pendiente de causa raíz</div>":"");',
+'    var corr=p.correctiva?("<div class=\\"pcorr\\">🛠 Acción: "+h(p.correctiva)+"</div>"):"";',
+'    var pq="";if(p.porques&&p.porques.length){var qa=p.porques.map(function(x,j){return "<div class=\\"pqi\\"><b>"+(j+1)+".</b> "+h(x.p)+"<br><span class=\\"pqr\\">→ "+h(x.r)+"</span></div>";}).join("");pq="<div class=\\"pqtog\\" onclick=\\"pqToggle("+i+")\\">▾ ver "+p.porques.length+" por qués</div><div class=\\"pqbox\\" id=\\"pq_"+i+"\\" style=\\"display:none\\">"+qa+"</div>";}',
+'    h1+="<div class=\\"paro\\"><div class=\\"phead\\">"+ic+" <b>"+h(p.tablero)+"</b> <span class=\\"muted\\">· "+h(p.hora)+" · "+dur+" · "+h(p.causa)+"</span></div>"+raiz+corr+pq+"</div>";',
+'  });',
+'  document.getElementById("parosHoy").innerHTML=h1;',
+'  var rh="";if(R.length){rh="<div class=\\"recttl\\">Causas raíz recurrentes (7 días)</div>";R.forEach(function(r){rh+="<div class=\\"recrow\\"><span>"+h(r.causa)+" <span class=\\"muted\\">· "+h(r.linea)+"</span></span><span class=\\"recn\\">"+r.veces+"× · "+r.min+" min</span></div>";});}',
+'  document.getElementById("parosRec").innerHTML=rh;',
+'}',
 'async function load(){',
 '  try{',
 '    var r=await fetch(location.pathname+"?token="+encodeURIComponent(TK||"")+"&data=1",{cache:"no-store"});',
@@ -175,11 +203,12 @@ if (q.data !== '1') {
 '      ht+="<div class=\\"tab\\"><div>"+t.sem+" <b>"+t.nombre+"</b><div class=\\"muted\\">"+(t.metaLbl||"")+" · "+t.grupo+" · hora reportada "+(t.ultima||"—")+(t.sd?" · "+t.sd+" sin dato":"")+(t.over?" · ⚠️ reportó "+t.pctRaw+"% — revisar meta/captura":"")+(t.low&&t.causasHoy&&t.causasHoy.length?(" · <span style=\\"color:var(--bad)\\">🔻 "+t.causasHoy.join(" · ")+"</span>"):"")+"</div></div><div class=\\"num\\" style=\\"text-align:right\\">"+p+"</div></div>"});',
 '    document.getElementById("tableros").innerHTML=ht||"<div class=\\"empty\\">Sin datos hoy</div>";',
 '    try{renderFlujo(d)}catch(fe){document.getElementById("flujo").innerHTML="<div class=\\"empty\\">flujo no cargó</div>"}',
+'    try{renderParos(d)}catch(pe){}',
 '    var rev=d.revisar||[];document.getElementById("revisar").innerHTML=rev.length?("<div class=\\"revbox\\"><b>⚠️ "+rev.length+" tablero(s) con dato sospechoso</b> (&gt;115%, fuera del rango esperado 85–115%) — revisar meta o captura: "+rev.map(function(x){return x.nombre+" ("+x.pctRaw+"%)";}).join(" · ")+". El número final ya cuenta cada proceso máx. 100%.</div>"):"";',
 '    var hh="";d.lideres.forEach(function(l){var pc=l.pct==null?0:l.pct;var c=pc>=80?"var(--ok)":pc>=50?"var(--warn)":"var(--bad)";',
 '      hh+="<div class=\\"tab\\"><div><b>"+l.nombre+"</b><div class=\\"bar\\"><i style=\\"width:"+Math.min(pc,100)+"%;background:"+c+"\\"></i></div></div><div class=\\"num\\" style=\\"text-align:right\\">"+l.reportados+"/"+l.esperados+"<div class=\\"muted\\" style=\\"font-weight:400\\">captura "+(l.ultima||"—")+"</div></div></div>"});',
 '    document.getElementById("hb").innerHTML=hh||"<div class=\\"empty\\">Sin líderes</div>";',
-'    if(d.escalamientos.length){var et="<table><tr><th>Tipo</th><th>Tablero</th><th>Detalle</th><th>A</th><th>Hace</th><th>Acuse</th></tr>";',
+'    if(d.escalamientos.length){var et="<table><tr><th>Tipo</th><th>Tablero</th><th>Detalle</th><th>A</th><th>Hace</th><th>Aviso</th></tr>";',
 '      d.escalamientos.forEach(function(e){et+="<tr><td><span class=\\"pill t-"+e.tipo+"\\">"+e.tipo+"</span></td><td>"+e.tablero+"</td><td>"+(e.detalle||"")+"</td><td>"+(e.quien||"—")+"</td><td>"+e.haceMin+" min</td><td>"+(e.acuse?"✅":"⏳")+"</td></tr>"});',
 '      et+="</table>";document.getElementById("esc").innerHTML=et;}else{document.getElementById("esc").innerHTML="<div class=\\"empty\\">Nada escalado abierto 🎉</div>"}',
 '    try{drawHora(d.porHora);parData=d;renderPareto();drawSemana(d.semana||[]);}catch(ce){document.getElementById("sub").textContent+=" · (graficas no cargaron)"}',
@@ -396,6 +425,18 @@ if (cuelloIdx >= 0) {
   cuelloDetalle = { etapa: flujo[cuelloIdx].etapa, lider: flujo[cuelloIdx].lider, perdidas: flujo[cuelloIdx].perdidas, boards };
 }
 
+// ===== Paros de hoy con causa raíz (5 por qués) + causas raíz recurrentes (7 d) =====
+let parosHoy = [];
+try {
+  parosHoy = (await pg(`SELECT l.nombre AS tablero, l.grupo, p.estado, to_char(p.ts_inicio AT TIME ZONE 'America/Mexico_City','HH24:MI') AS hora, p.duracion_min AS dur, COALESCE(cp.boton_texto,'—') AS causa, p.causa_raiz, p.correctiva, p.analisis_porques FROM horacio.paros p JOIN horacio.lineas l ON l.id=p.linea_id LEFT JOIN horacio.causas_paro cp ON cp.codigo=p.causa_codigo WHERE p.ts_inicio::date='${fecha}' ORDER BY p.ts_inicio DESC`))
+    .map((r) => ({ tablero: r.tablero, grupo: r.grupo, estado: r.estado, hora: r.hora, dur: r.dur == null ? null : Number(r.dur), causa: r.causa, causaRaiz: r.causa_raiz || null, correctiva: r.correctiva || null, porques: Array.isArray(r.analisis_porques) ? r.analisis_porques.map((x) => ({ p: x.p, r: x.r })) : [] }));
+} catch (e) { parosHoy = []; }
+let parosRecurrentes = [];
+try {
+  parosRecurrentes = (await pg("SELECT causa, linea, grupo, veces_7d, min_7d FROM horacio.v_paros_recurrentes ORDER BY veces_7d DESC, min_7d DESC LIMIT 6"))
+    .map((r) => ({ causa: r.causa, linea: r.linea, grupo: r.grupo, veces: Number(r.veces_7d) || 0, min: Number(r.min_7d) || 0 }));
+} catch (e) { parosRecurrentes = []; }
+
 const payload = {
   fecha, hora: now.toFormat('HH:mm'),
   kpis: {
@@ -405,7 +446,7 @@ const payload = {
     faltAbiertos: Number(K.falt_ab) || 0, calAbiertos: Number(K.cal_ab) || 0,
     reaccionMin: (K.reaccion_min == null ? null : Number(K.reaccion_min)),
   },
-  tableros, lideres, escalamientos: escal, porHora, pareto, topArea, paretoDia, topAreaDia, embarques, flujo, cuelloDetalle,
+  tableros, lideres, escalamientos: escal, porHora, pareto, topArea, paretoDia, topAreaDia, embarques, flujo, cuelloDetalle, parosHoy, parosRecurrentes,
   revisar: tableros.filter((t) => t.over).map((t) => ({ nombre: t.nombre, pctRaw: t.pctRaw, real: t.real, plan: t.plan, unidad: t.unidad })),
   semana,
 };
