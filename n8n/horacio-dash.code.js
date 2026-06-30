@@ -309,8 +309,8 @@ const parDia = await buildPareto(`'${fecha}'::date`);    // solo hoy (R3-HDB2-04
 const pareto = par7.pareto, topArea = par7.topArea;
 const paretoDia = parDia.pareto, topAreaDia = parDia.topArea;
 
-// ===== Embarques (captura='tarjetas') — detalle aparte, fuera de cumplimiento =====
-const embLines = await pg("SELECT id FROM horacio.lineas WHERE captura='tarjetas' AND activa");
+// ===== Embarques (captura='tarjetas', grupo EMBARQUES) — detalle aparte, fuera de cumplimiento =====
+const embLines = await pg("SELECT id FROM horacio.lineas WHERE captura='tarjetas' AND activa AND grupo='EMBARQUES'");
 let embarques = { activo: false };
 if (embLines.length) {
   const ids = embLines.map((r) => `'${r.id}'`).join(',');
@@ -327,6 +327,15 @@ if (embLines.length) {
     porNP: byNP.map((r) => ({ np: r.np, cant: Number(r.cant) || 0 })),
     porHora: byHora.map((r) => ({ slot: r.slot, cant: Number(r.cant) || 0 })),
   };
+}
+
+// ===== Empaque por tarjetas (etapa del flujo) — tras reducir tableros, Empaque captura por tarjetas (volumen, sin meta) =====
+const empLines = await pg("SELECT id FROM horacio.lineas WHERE captura='tarjetas' AND activa AND grupo='EMPAQUE'");
+let empaqueTarj = 0;
+if (empLines.length) {
+  const ids = empLines.map((r) => `'${r.id}'`).join(',');
+  const tt = await pg(`SELECT COALESCE(SUM(d.cantidad),0)::bigint AS total FROM horacio.hxh_tarjetas d JOIN horacio.hora_por_hora h ON h.id=d.hxh_id WHERE h.linea_id IN (${ids}) AND h.fecha='${fecha}'`);
+  empaqueTarj = Number(tt[0] && tt[0].total) || 0;
 }
 
 // ===== Flujo por etapa (value stream) + cuello de botella por piezas perdidas =====
@@ -366,7 +375,8 @@ const flujo = STAGE_ORDER.map((g) => {
   const srRaw = cm.reduce((a, t) => a + t.real, 0);          // real de tableros con meta (para % y real/plan)
   const srCap = cm.reduce((a, t) => a + Math.min(t.real, t.plan), 0);   // topado por proceso (honesto)
   const perd = cm.reduce((a, t) => a + t.perdidas, 0);        // piezas perdidas de la etapa
-  const realTotal = bs.reduce((a, t) => a + t.real, 0);      // producción TOTAL (con o sin meta) — para mostrar etapas sin OT
+  let realTotal = bs.reduce((a, t) => a + t.real, 0);        // producción TOTAL (con o sin meta) — para mostrar etapas sin OT
+  if (g === 'EMPAQUE' && empaqueTarj > 0) realTotal += empaqueTarj;   // Empaque captura por tarjetas (volumen del día)
   const pct = sp > 0 ? Math.min(100, Math.round(srCap / sp * 100)) : null;
   // estaciones de la etapa, en orden de proceso (tableros ya viene ORDER BY grupo, orden)
   const estaciones = bs.map((t) => ({ nombre: t.nombre, real: t.real, plan: t.plan, pct: t.pct, sem: t.sem, ultima: t.ultima, sd: t.sd, perdidas: t.perdidas, causa: (t.causasHoy && t.causasHoy.length ? t.causasHoy.join(' · ') : null), unidad: t.unidad }));
