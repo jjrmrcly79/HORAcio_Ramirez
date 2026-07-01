@@ -1,5 +1,50 @@
 # AGENTS.md — Horacio (bot HxH Mapartel · SN-04 v2)
 
+## Bitácora 2026-07-01 — V2 arranque: Pareo SMT↔final como información oficial (tab autoservicio)
+
+**Objetivo:** desbloquear el pareo SMT↔PTH de la reunión 26-jun + sesión Nayeli 29-jun. El pareo
+es **1:N** (un subensamble alimenta muchos finales), **no derivable** de `orden_base`/partida, y el
+export de OTs **no trae el sufijo `_SMT`**. Solución = catálogo explícito, sembrado desde los dos
+Excel de planeación (ENSAMBLES.xlsx + Tabla de ensambles.xlsx), mantenido **en el sistema** (patrón
+Estándar x Hora: el Excel es solo semilla; la fuente de verdad pasa a Supabase).
+
+- **`sql/040_pareo_smt.sql`**: tabla `horacio.pareo_smt(parte_smt, parte_final, nivel, fuente, vigente…)`
+  (1:N, UNIQUE(smt,final)) + `pareo_excluidos` (marcar "sin subensamble" 1:1) + función
+  **`horacio.norm_np()`** (upper · `()→[]` · quita `_SMT` · quita espacios — `Focaris_Ctrl_ (F)_SMT`
+  → `FOCARIS_CTRL_[F]` = como sale en el export) + vista **`v_pareo_pendientes`** (OTs en proceso sin
+  pareo, por volumen).
+- **`scripts/import_pareo_smt.py`** (Excel en `data/pareo/`): sembró **115 parejas / 24 subensambles**,
+  `fuente='excel_planeacion_2024-10'`. Cobertura: pendientes **31→16** (los 16 = serie TJ, T005…, KT,
+  BLE, 05-…; **TJ000360** = 17,764 ord es el mayor gap → preguntar a Nayeli si es familia nueva o alias).
+- **Tab "Pareo SMT"** en el panel (gate `personas.puede_pareo`): ① **pendientes** (punteado, por volumen)
+  → dropdown de subensamble conocido / nuevo → **parear** o **sin sub**; ② **cargados** (verde, 1:N por
+  subensamble, × para quitar). Handlers `set_pareo`/`mark_sin_sub`/`del_pareo` (normalizan con `norm_np`,
+  gateados server-side). Deploy hot al panel `4sJAO9urzrgQowJB`. Verificado e2e con sesión real de Nayeli
+  (mark→16→15→revert→16). **Alta de Nayeli**: ya existía (rol `faltantes`, dueña del escalamiento de
+  faltantes → NO se tocó el rol); se le dio `puede_pareo=true` + PIN temporal.
+- **Fase 2 (pendiente):** reescribir `v_ot_parte`/`v_wip_smt` para **consumir** el pareo y corregir el WIP
+  de la víbora (adiós falsos atorones), con indicador de cobertura; cuando la cobertura suba con la carga
+  de Nayeli. Falta aún: factor de cantidad (2:1) y stock de seguridad (Excel Brenda) para separar buffer de atoro.
+- **Validación:** `scratchpad/check_panel.mjs` (doble `node --check` + mock-DOM renderMetas/estGrid/renderPareo).
+
+## Bitácora 2026-07-01 — V1.5: metas del día siguiente + colores en tab Estándar
+
+**Objetivo:** capturar hoy las metas de **mañana** (programación anticipada → ver cómo
+programan la planta) + ayuda visual en el tab Estándar (cajas con/sin dato).
+
+- **Metas de mañana (sin cambio de schema):** `horacio.ordenes_tablero` ya tiene `fecha`;
+  el tab "Metas del día" gana un toggle **Hoy / Mañana**. El bot NO cambia — sigue leyendo
+  `ordenes_tablero WHERE fecha=hoy`, así que la meta de mañana queda inerte y entra sola al
+  cambiar el día. Backend: `set_meta` acepta `body.fecha` **validado server-side ∈ {hoy, mañana}**
+  (no cualquier fecha); el payload trae `ot_man`/`meta_man` por tablero + `fecha_manana`.
+  Cero camino paralelo — misma tabla que `/orden`.
+- **Colores en Estándar:** cada caja de estación se pinta **verde** (`#e9f7ef`/`#b7e4c7` + ✅)
+  si tiene Std/Hr, **punteada gris** si está vacía; se recolorea al guardar/borrar (helper
+  `estCol(has)`, id `esbox_<proc>`). Réplica del código de color de la matriz de captura.
+- **Archivos:** `n8n/horacio-panel.code.js` (nodo Code `Horacio Panel`, wf `4sJAO9urzrgQowJB`).
+  Deploy hot con `push_code.py`. Validado: doble `node --check` + mock-DOM (renderMetas Hoy/Mañana,
+  estGrid colores) en `scratchpad/check_panel.mjs`. Página en vivo verificada (GET 200).
+
 ## Bitácora 2026-06-30 — Incidente de red + endurecimiento del bot (resiliencia HTTP)
 
 **Reporte:** "los bots de Mapartel fallan, las líderes no pueden subir datos".

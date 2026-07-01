@@ -40,9 +40,10 @@ if (token !== TOKEN) {
 
 const now = nowMX();
 const fecha = now.toFormat('yyyy-LL-dd');
+const fechaManana = now.plus({ days: 1 }).toFormat('yyyy-LL-dd'); // V1.5: metas del día siguiente
 const getSession = async (t) => {
   if (!t) return null;
-  const r = await pg(`SELECT s.persona_id, s.es_admin, s.nombre, p.rol, COALESCE(p.puede_meta,false) AS puede_meta, COALESCE(p.puede_estandar,false) AS puede_estandar FROM horacio.panel_sesiones s JOIN horacio.personas p ON p.id=s.persona_id WHERE s.token='${esc(t)}' AND s.expira>now() LIMIT 1`);
+  const r = await pg(`SELECT s.persona_id, s.es_admin, s.nombre, p.rol, COALESCE(p.puede_meta,false) AS puede_meta, COALESCE(p.puede_estandar,false) AS puede_estandar, COALESCE(p.puede_pareo,false) AS puede_pareo FROM horacio.panel_sesiones s JOIN horacio.personas p ON p.id=s.persona_id WHERE s.token='${esc(t)}' AND s.expira>now() LIMIT 1`);
   return r.length ? r[0] : null;
 };
 // quién puede ver/curar perfiles: SOLO RH (datos sensibles — decisión del Director)
@@ -222,12 +223,14 @@ if (isPost) {
       const ln = await pg(`SELECT id FROM horacio.lineas WHERE id='${esc(lid)}' AND activa`);
       if (!ln.length) return J({ ok: false, error: 'Tablero no existe.' });
       if (isNaN(meta) || meta < 1 || meta > 100000) return J({ ok: false, error: 'Meta inválida (1–100000).' });
+      // V1.5: la meta puede ser para HOY o MAÑANA (programación anticipada). Validado en servidor.
+      const fMeta = (body.fecha === fechaManana) ? fechaManana : fecha;
       const sug = (body.meta_sugerida == null || body.meta_sugerida === '') ? null : Number(body.meta_sugerida);
       const difiere = (sug != null && isFinite(sug) && Math.abs(sug - meta) >= 1);
       const motivo = String(body.motivo || '').trim().slice(0, 300);
       if (difiere && !motivo) return J({ ok: false, error: 'Ajustar la meta sugerida pide un motivo (5-porqués).' });
-      await pg(`UPDATE horacio.ordenes_tablero SET vigente=false WHERE linea_id='${esc(lid)}' AND fecha='${fecha}' AND vigente`);
-      await pg(`INSERT INTO horacio.ordenes_tablero(linea_id,fecha,orden,meta_hr,vigente,origen,set_by_panel,meta_sugerida,meta_motivo) VALUES('${esc(lid)}','${fecha}',${orden ? `'${esc(orden)}'` : 'NULL'},${meta},true,'panel','${esc(by)}',${sug == null || !isFinite(sug) ? 'NULL' : sug},${motivo ? `'${esc(motivo)}'` : 'NULL'})`);
+      await pg(`UPDATE horacio.ordenes_tablero SET vigente=false WHERE linea_id='${esc(lid)}' AND fecha='${fMeta}' AND vigente`);
+      await pg(`INSERT INTO horacio.ordenes_tablero(linea_id,fecha,orden,meta_hr,vigente,origen,set_by_panel,meta_sugerida,meta_motivo) VALUES('${esc(lid)}','${fMeta}',${orden ? `'${esc(orden)}'` : 'NULL'},${meta},true,'panel','${esc(by)}',${sug == null || !isFinite(sug) ? 'NULL' : sug},${motivo ? `'${esc(motivo)}'` : 'NULL'})`);
       return J({ ok: true });
     }
     if (act === 'set_estandar') { // V1.5: capturar/editar estándar por hora (gobierno: Gaby)
@@ -253,6 +256,31 @@ if (isPost) {
       if (!(v > 0)) return J({ ok: false, error: 'valor inválido' });
       await pg(`INSERT INTO horacio.estandar_proceso(parte_id,proceso,std_hr) VALUES('${pid}','${proceso}',${v}) ON CONFLICT (parte_id,proceso) DO UPDATE SET std_hr=EXCLUDED.std_hr`);
       return J({ ok: true, std: v });
+    }
+    if (act === 'set_pareo') { // V2: planeación asigna un final a un subensamble SMT (1:N)
+      if (!(S.es_admin || S.puede_pareo)) return J({ ok: false, error: 'Solo planeación puede parear.' });
+      const pf = String(body.parte_final || '').trim().slice(0, 60);
+      const ps = String(body.parte_smt || '').trim().slice(0, 60);
+      if (!pf || !ps) return J({ ok: false, error: 'Falta el final o el subensamble.' });
+      // normaliza con la MISMA regla del sistema (norm_np) para empatar con el export de OTs
+      await pg(`INSERT INTO horacio.pareo_smt(parte_smt,parte_final,fuente,vigente,set_by_panel) SELECT horacio.norm_np('${esc(ps)}'), horacio.norm_np('${esc(pf)}'), 'panel', true, '${esc(by)}' WHERE horacio.norm_np('${esc(ps)}')<>'' AND horacio.norm_np('${esc(pf)}')<>'' AND horacio.norm_np('${esc(ps)}')<>horacio.norm_np('${esc(pf)}') ON CONFLICT (parte_smt,parte_final) DO UPDATE SET vigente=true, fuente='panel', set_by_panel='${esc(by)}', ts=now()`);
+      await pg(`DELETE FROM horacio.pareo_excluidos WHERE nkey=horacio.norm_np('${esc(pf)}')`);
+      return J({ ok: true });
+    }
+    if (act === 'mark_sin_sub') { // V2: marca un final como 'sin subensamble' (1:1) → sale de pendientes
+      if (!(S.es_admin || S.puede_pareo)) return J({ ok: false, error: 'Solo planeación.' });
+      const pf = String(body.parte_final || '').trim().slice(0, 60);
+      if (!pf) return J({ ok: false, error: 'Falta la parte.' });
+      const motivo = String(body.motivo || '').trim().slice(0, 200);
+      await pg(`INSERT INTO horacio.pareo_excluidos(nkey,numero_parte,motivo,set_by_panel) SELECT horacio.norm_np('${esc(pf)}'), '${esc(pf)}', ${motivo ? `'${esc(motivo)}'` : 'NULL'}, '${esc(by)}' WHERE horacio.norm_np('${esc(pf)}')<>'' ON CONFLICT (nkey) DO UPDATE SET motivo=EXCLUDED.motivo, set_by_panel=EXCLUDED.set_by_panel, ts=now()`);
+      return J({ ok: true });
+    }
+    if (act === 'del_pareo') { // V2: quita una pareja SMT↔final
+      if (!(S.es_admin || S.puede_pareo)) return J({ ok: false, error: 'Solo planeación.' });
+      const id = String(body.pareo_id || '');
+      if (!id) return J({ ok: false, error: 'Falta id.' });
+      await pg(`DELETE FROM horacio.pareo_smt WHERE id='${esc(id)}'`);
+      return J({ ok: true });
     }
     return J({ ok: false, error: 'acción desconocida' });
   } catch (e) { return J({ ok: false, error: 'error: ' + (e.message || e) }); }
@@ -281,7 +309,7 @@ if (q.data === '1') {
   const S = await getSession(q.s);
   if (!S) return J({ ok: false, code: 'auth' });
   const personas = await pg("SELECT id, nombre, rol, es_admin, (pin_hash IS NOT NULL) AS has_pin FROM horacio.personas WHERE activa ORDER BY (rol='lider') DESC, rol, nombre");
-  const tableros = await pg(`SELECT l.id, l.codigo, l.nombre, l.grupo, l.orden, l.unidad, l.captura, l.supervisor_rol, l.lider_persona_id, p.nombre AS lider, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot_hoy, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta_hoy, (EXISTS(SELECT 1 FROM horacio.linea_proceso lp WHERE lp.linea_codigo=l.codigo)) AS mapeada FROM horacio.lineas l LEFT JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE l.activa ORDER BY l.grupo, l.orden`);
+  const tableros = await pg(`SELECT l.id, l.codigo, l.nombre, l.grupo, l.orden, l.unidad, l.captura, l.supervisor_rol, l.lider_persona_id, p.nombre AS lider, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot_hoy, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fecha}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta_hoy, (SELECT o.orden FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fechaManana}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS ot_man, (SELECT o.meta_hr FROM horacio.ordenes_tablero o WHERE o.linea_id=l.id AND o.fecha='${fechaManana}' AND o.vigente ORDER BY o.ts DESC LIMIT 1) AS meta_man, (EXISTS(SELECT 1 FROM horacio.linea_proceso lp WHERE lp.linea_codigo=l.codigo)) AS mapeada FROM horacio.lineas l LEFT JOIN horacio.personas p ON p.id=l.lider_persona_id WHERE l.activa ORDER BY l.grupo, l.orden`);
   const causas = await pg("SELECT codigo, boton_texto FROM horacio.causas_paro WHERE activa ORDER BY orden");
   // OT vigentes del sistema (export "en proceso") para el selector de meta — no captura manual
   const ots = await pg("SELECT orden_trabajo, numero_parte, descripcion, es_smt, GREATEST(COALESCE(cant_ordenada,0)-COALESCE(cant_terminada,0),0) AS pend FROM horacio.ordenes_trabajo WHERE estado_nexia NOT IN ('muerta','cerrada') ORDER BY es_smt DESC, orden_trabajo");
@@ -298,12 +326,22 @@ if (q.data === '1') {
     estParts = ep.map((r) => ({ np: r.numero_parte, desc: r.descripcion, nstd: Number(r.nstd) || 0, enOt: !!r.en_ot }));
     ev.forEach((r) => { (estMap[r.numero_parte] = estMap[r.numero_parte] || {})[r.proceso] = Number(r.std); });
   }
+  // pareo SMT↔final (solo planeación / admin) — parejas cargadas + cola de pendientes por volumen
+  let pareo = [], pareoPend = [], subensambles = [];
+  if (S.es_admin || S.puede_pareo) {
+    pareo = await pg("SELECT id, parte_smt, parte_final, nivel FROM horacio.pareo_smt WHERE vigente ORDER BY parte_smt, parte_final");
+    pareoPend = await pg("SELECT numero_parte, ord, term FROM horacio.v_pareo_pendientes");
+    subensambles = await pg("SELECT DISTINCT parte_smt FROM horacio.pareo_smt WHERE vigente ORDER BY parte_smt");
+  }
   return J({
-    fecha, hora: now.toFormat('HH:mm'), slots: SLOTS, personas, tableros, causas, paros,
+    fecha, fecha_manana: fechaManana, hora: now.toFormat('HH:mm'), slots: SLOTS, personas, tableros, causas, paros,
     ots: ots.map((o) => ({ ot: o.orden_trabajo, np: o.numero_parte, desc: o.descripcion, smt: !!o.es_smt, pend: o.pend == null ? null : Number(o.pend) })),
     estParts, estMap,
+    pareo: pareo.map((r) => ({ id: r.id, smt: r.parte_smt, final: r.parte_final, nivel: r.nivel })),
+    pareoPend: pareoPend.map((r) => ({ np: r.numero_parte, ord: r.ord == null ? null : Number(r.ord), term: r.term == null ? null : Number(r.term) })),
+    subensambles: subensambles.map((r) => r.parte_smt),
     hxh: hxh.map((r) => ({ linea_id: r.linea_id, slot: r.hora_slot, real: r.real == null ? null : Number(r.real), plan: r.plan == null ? null : Number(r.plan), sin_dato: r.sin_dato, origen: r.origen, por: r.capturado_por || r.reporto || null })),
-    resumen: { puras, manual, sind }, me: { nombre: S.nombre, es_admin: S.es_admin, rol: S.rol, perfiles: puedePerfiles(S), puede_meta: !!S.puede_meta, puede_estandar: !!S.puede_estandar },
+    resumen: { puras, manual, sind }, me: { nombre: S.nombre, es_admin: S.es_admin, rol: S.rol, perfiles: puedePerfiles(S), puede_meta: !!S.puede_meta, puede_estandar: !!S.puede_estandar, puede_pareo: !!S.puede_pareo },
   });
 }
 
@@ -345,7 +383,7 @@ const PAGE = [
 '<script>',
 'var TK=new URLSearchParams(location.search).get("token")||"";',
 'var MEM={};function ssGet(k){try{return sessionStorage.getItem(k)||MEM[k]||"";}catch(e){return MEM[k]||"";}}function ssSet(k,v){MEM[k]=v;try{sessionStorage.setItem(k,v);}catch(e){}}function ssDel(k){MEM[k]="";try{sessionStorage.removeItem(k);}catch(e){}}',
-'var S=ssGet("panel_s"), ME=null, ST=null, TAB="captura", PRE=null, PREC=null, WHO=null, GP=null, SUG={};',
+'var S=ssGet("panel_s"), ME=null, ST=null, TAB="captura", PRE=null, PREC=null, WHO=null, GP=null, SUG={}, METAF="hoy";',
 'function tj(s){var t=document.getElementById("toast");t.textContent=s;t.className="show";setTimeout(function(){t.className="";},2800);}',
 'function h(s){return String(s==null?"":s).replace(/[&<>\\"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c];});}',
 'function api(payload){payload.token=TK;return fetch(location.pathname,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)}).then(function(r){return r.json();});}',
@@ -378,12 +416,12 @@ const PAGE = [
 '   document.getElementById("sub").textContent=d.fecha+" · "+d.hora+" (MX) · "+d.resumen.puras+" de líder · "+d.resumen.manual+" manual · "+d.resumen.sind+" sin dato";',
 '   render();',
 '  }catch(e){document.getElementById("sub").textContent="error: "+e.message;}}',
-'function tabs(){var ts=[["captura","Captura en vivo"],["registrar","Registrar hora"]];if(ME&&(ME.es_admin||ME.puede_meta))ts.push(["metas","Metas del día"]);if(ME&&(ME.es_admin||ME.puede_estandar))ts.push(["estandar","Estándar"]);ts.push(["tableros","Tableros"]);ts.push(["asignar","Asignar líder"]);if(ME&&ME.es_admin)ts.push(["paros","Paros"]);if(ME&&ME.es_admin)ts.push(["personas","Personas / PIN"]);if(ME&&ME.perfiles)ts.push(["perfiles","Perfiles"]);',
+'function tabs(){var ts=[["captura","Captura en vivo"],["registrar","Registrar hora"]];if(ME&&(ME.es_admin||ME.puede_meta))ts.push(["metas","Metas del día"]);if(ME&&(ME.es_admin||ME.puede_estandar))ts.push(["estandar","Estándar"]);if(ME&&(ME.es_admin||ME.puede_pareo))ts.push(["pareo","Pareo SMT"]);ts.push(["tableros","Tableros"]);ts.push(["asignar","Asignar líder"]);if(ME&&ME.es_admin)ts.push(["paros","Paros"]);if(ME&&ME.es_admin)ts.push(["personas","Personas / PIN"]);if(ME&&ME.perfiles)ts.push(["perfiles","Perfiles"]);',
 '  document.getElementById("tabs").innerHTML=ts.map(function(t){return "<div class=\\"tab"+(TAB==t[0]?" on":"")+"\\" onclick=\\"go(\\x27"+t[0]+"\\x27)\\">"+t[1]+"</div>";}).join("");}',
 'function go(t){TAB=t;render();}',
 'function ck(l,s){return l+"|"+s;}function buildMap(){var m={};ST.hxh.forEach(function(r){var k=ck(r.linea_id,r.slot);var p=m[k];if(!p||(p.sin_dato&&!r.sin_dato))m[k]=r;});return m;}',
 'function render(){tabs();var v=document.getElementById("view");if(!ST){v.innerHTML="";return;}',
-'  if(TAB=="captura")return renderMatriz(v);if(TAB=="registrar")return renderReg(v);if(TAB=="metas")return renderMetas(v);if(TAB=="estandar")return renderEstandar(v);if(TAB=="tableros")return renderTableros(v);if(TAB=="asignar")return renderAsignar(v);if(TAB=="paros")return renderParos(v);if(TAB=="personas")return renderPersonas(v);if(TAB=="perfiles")return renderPerfiles(v);}',
+'  if(TAB=="captura")return renderMatriz(v);if(TAB=="registrar")return renderReg(v);if(TAB=="metas")return renderMetas(v);if(TAB=="estandar")return renderEstandar(v);if(TAB=="pareo")return renderPareo(v);if(TAB=="tableros")return renderTableros(v);if(TAB=="asignar")return renderAsignar(v);if(TAB=="paros")return renderParos(v);if(TAB=="personas")return renderPersonas(v);if(TAB=="perfiles")return renderPerfiles(v);}',
 'function renderMatriz(v){var m=buildMap();var grp=null,rows="";',
 '  ST.tableros.forEach(function(t){if(t.grupo!=grp){grp=t.grupo;rows+="<tr><td class=\\"lh grp\\" colspan=\\""+(ST.slots.length+1)+"\\">"+h(grp)+"</td></tr>";}var tds="";',
 '   ST.slots.forEach(function(s){var c=m[ck(t.id,s)];var cls="c-falta",txt="+",ti="registrar";if(c){if(c.sin_dato){cls="c-sd";txt="⛔";ti="sin dato";}else if(c.origen=="panel_manual"){cls="c-manual";txt=(c.real==null?"✓":c.real);ti="manual · "+(c.por||"?");}else{cls="c-lider";txt=(c.real==null?"✓":c.real);ti="líder · "+(c.por||"?");}}var clk=(!c||c.sin_dato);var captured=(c&&!c.sin_dato);var oc="";if(clk){oc=" onclick=\\"preReg(\\x27"+t.id+"\\x27,\\x27"+s+"\\x27)\\"";}else if(captured&&ME&&ME.es_admin){oc=" onclick=\\"preCorrect(\\x27"+t.id+"\\x27,\\x27"+s+"\\x27,"+(c.real==null?0:c.real)+")\\" style=\\"cursor:pointer\\"";ti="✏️ corregir · "+ti;}tds+="<td><span class=\\"cell "+cls+"\\" title=\\""+ti+"\\""+oc+">"+txt+"</span></td>";});',
@@ -401,14 +439,17 @@ const PAGE = [
 '  v.innerHTML="<div class=\\"card\\"><h2>Registrar una hora no capturada</h2><div class=\\"row\\"><div class=\\"field\\"><label>Tablero</label><select id=\\"r_b\\">"+bOpts(pl.linea_id)+"</select></div><div class=\\"field\\"><label>Hora</label><select id=\\"r_s\\">"+sOpts(pl.slot)+"</select></div><div class=\\"field\\"><label>Piezas</label><input id=\\"r_p\\" inputmode=\\"numeric\\" placeholder=\\"0\\" style=\\"width:90px\\"></div><div class=\\"field\\"><label>Causa (opcional)</label><select id=\\"r_c\\">"+causas+"</select></div><div class=\\"field\\" style=\\"flex:1;min-width:160px\\"><label>Nota (opcional)</label><input id=\\"r_n\\" placeholder=\\"motivo\\"></div><button class=\\"btn primary\\" onclick=\\"doReg()\\">Registrar</button></div><div class=\\"muted\\" style=\\"margin-top:10px\\">Quedará firmado: origen <b>manual</b> · por <b>"+h(ME?ME.nombre:"")+"</b>.</div></div>";PRE=null;}',
 'async function doReg(){var p=document.getElementById("r_p").value;if(!p&&p!=="0"){tj("Escribe las piezas");return;}var d=await post({action:"backfill",linea_id:document.getElementById("r_b").value,slot:document.getElementById("r_s").value,real:p,causa:document.getElementById("r_c").value,nota:document.getElementById("r_n").value});if(d.ok){tj("Registrado ✓");await load();go("captura");}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
 // ----- V1.5: metas del día (captura + sugerencia desde estándar) -----
-'function otOpts(t){var cur=t.ot_hoy||"";var smt=(t.grupo=="SMT");var list=(ST.ots||[]).filter(function(o){return smt?o.smt:!o.smt;});if(!list.length)list=(ST.ots||[]);var seen=false;var o="<option value=\\"\\">— elige OT del sistema —</option>"+list.map(function(o){if(o.ot==cur)seen=true;return "<option value=\\""+h(o.ot)+"\\""+(o.ot==cur?" selected":"")+">"+h(o.ot)+" \\u00b7 "+h(o.np)+(o.pend!=null?" ("+o.pend+" pend)":"")+"</option>";}).join("");if(cur&&!seen)o+="<option value=\\""+h(cur)+"\\" selected>"+h(cur)+" (actual)</option>";return o;}',
+'function otOpts(t,cur){cur=cur||"";var smt=(t.grupo=="SMT");var list=(ST.ots||[]).filter(function(o){return smt?o.smt:!o.smt;});if(!list.length)list=(ST.ots||[]);var seen=false;var o="<option value=\\"\\">— elige OT del sistema —</option>"+list.map(function(o){if(o.ot==cur)seen=true;return "<option value=\\""+h(o.ot)+"\\""+(o.ot==cur?" selected":"")+">"+h(o.ot)+" \\u00b7 "+h(o.np)+(o.pend!=null?" ("+o.pend+" pend)":"")+"</option>";}).join("");if(cur&&!seen)o+="<option value=\\""+h(cur)+"\\" selected>"+h(cur)+" (actual)</option>";return o;}',
 'function renderMetas(v){if(!(ME&&(ME.es_admin||ME.puede_meta))){v.innerHTML="<div class=\\"card\\"><div class=\\"muted\\">No tienes permiso para fijar metas.</div></div>";return;}',
 '  var grp=null,rows="";ST.tableros.forEach(function(t){if(t.grupo!=grp){grp=t.grupo;rows+="<div class=\\"grp\\">"+h(grp)+"</div>";}',
-'   var ot=t.ot_hoy||"";var mt=(t.meta_hoy==null?"":Math.round(Number(t.meta_hoy)));var map=t.mapeada?"":" <span class=\\"pill no\\">sin estándar mapeado</span>";',
-'   rows+="<div class=\\"tline\\" style=\\"display:block\\"><div class=\\"row\\" style=\\"align-items:flex-end\\"><div class=\\"field\\" style=\\"flex:1;min-width:150px\\"><label>"+h(t.nombre)+map+"</label><select id=\\"mo_"+t.id+"\\">"+otOpts(t)+"</select></div><div class=\\"field\\"><label>Meta/hr</label><input id=\\"mm_"+t.id+"\\" inputmode=\\"numeric\\" style=\\"width:90px\\" value=\\""+mt+"\\"></div><button class=\\"btn sm\\" onclick=\\"metaSug(\\x27"+t.id+"\\x27)\\">💡 sugerir</button><button class=\\"btn primary sm\\" onclick=\\"doMeta(\\x27"+t.id+"\\x27)\\">guardar</button> <span class=\\"muted\\" id=\\"ms_"+t.id+"\\"></span></div></div>";});',
-'  v.innerHTML="<div class=\\"card\\"><h2>Metas del día — "+h(ST.fecha)+"</h2><div class=\\"muted\\" style=\\"margin-bottom:10px\\">Elige la <b>OT del sistema</b> (export en proceso) y toca <b>💡 sugerir</b>: el estándar (teórico, prorrateado por tiempo productivo) propone la meta/hr; acéptala o ajústala. Ajustar pide motivo. Es la <b>misma meta</b> que usa el bot (no hay dos caminos).</div>"+rows+"</div>";}',
+'   var man=(METAF=="manana");var ot=(man?t.ot_man:t.ot_hoy)||"";var mtv=(man?t.meta_man:t.meta_hoy);var mt=(mtv==null?"":Math.round(Number(mtv)));var map=t.mapeada?"":" <span class=\\"pill no\\">sin estándar mapeado</span>";',
+'   rows+="<div class=\\"tline\\" style=\\"display:block\\"><div class=\\"row\\" style=\\"align-items:flex-end\\"><div class=\\"field\\" style=\\"flex:1;min-width:150px\\"><label>"+h(t.nombre)+map+"</label><select id=\\"mo_"+t.id+"\\">"+otOpts(t,ot)+"</select></div><div class=\\"field\\"><label>Meta/hr</label><input id=\\"mm_"+t.id+"\\" inputmode=\\"numeric\\" style=\\"width:90px\\" value=\\""+mt+"\\"></div><button class=\\"btn sm\\" onclick=\\"metaSug(\\x27"+t.id+"\\x27)\\">💡 sugerir</button><button class=\\"btn primary sm\\" onclick=\\"doMeta(\\x27"+t.id+"\\x27)\\">guardar</button> <span class=\\"muted\\" id=\\"ms_"+t.id+"\\"></span></div></div>";});',
+'  var man=(METAF=="manana");var fSel=man?(ST.fecha_manana||""):(ST.fecha||"");',
+'  var toggle="<div class=\\"row\\" style=\\"margin-bottom:10px;gap:6px\\"><button class=\\"btn sm"+(man?"":" primary")+"\\" onclick=\\"setMetaF(\\x27hoy\\x27)\\">Hoy</button><button class=\\"btn sm"+(man?" primary":"")+"\\" onclick=\\"setMetaF(\\x27manana\\x27)\\">Mañana</button><span class=\\"muted\\" style=\\"align-self:center\\">"+(man?"Programando el día siguiente — "+h(ST.fecha_manana||""):"Metas de hoy — "+h(ST.fecha||""))+"</span></div>";',
+'  v.innerHTML="<div class=\\"card\\"><h2>Metas — "+h(fSel)+"</h2>"+toggle+"<div class=\\"muted\\" style=\\"margin-bottom:10px\\">Elige la <b>OT del sistema</b> (export en proceso) y toca <b>💡 sugerir</b>: el estándar (teórico, prorrateado por tiempo productivo) propone la meta/hr; acéptala o ajústala. Ajustar pide motivo. Es la <b>misma meta</b> que usa el bot (no hay dos caminos). <b>Mañana</b> = programación anticipada: entra sola cuando cambie el día.</div>"+rows+"</div>";}',
+'function setMetaF(f){METAF=f;render();}',
 'async function metaSug(id){var ot=(document.getElementById("mo_"+id).value||"").trim();var ms=document.getElementById("ms_"+id);if(!ot){ms.textContent="elige la OT";return;}ms.textContent="…";var d=await post({action:"meta_suggest",linea_id:id,orden:ot});if(d&&d.ok&&d.sug){var s=d.sug;if(s.ok){SUG[id]=s.sugerida;document.getElementById("mm_"+id).value=s.sugerida;ms.innerHTML="sugerida <b>"+s.sugerida+"</b>/hr <span style=\\"color:#a1a1aa\\">("+h(s.proceso)+" @"+s.std_hr+" \\u00d7"+s.factor+")</span>";}else{SUG[id]=null;ms.textContent=s.motivo||"sin sugerencia";}}else if(d&&d.code=="auth"){logout();}else{ms.textContent=(d&&d.error)||"error";}}',
-'async function doMeta(id){var ot=(document.getElementById("mo_"+id).value||"").trim();var m=document.getElementById("mm_"+id).value;if(!m){tj("Escribe la meta");return;}var sug=SUG[id];var motivo="";if(sug!=null&&Math.abs(Number(sug)-Number(m))>=1){motivo=prompt("Ajustaste la meta sugerida ("+sug+"/hr). \\u00bfPor qu\\u00e9? Queda registrado.");if(motivo==null||!motivo.trim()){tj("Ajustar la sugerida pide motivo");return;}}var d=await post({action:"set_meta",linea_id:id,orden:ot,meta:m,meta_sugerida:(sug==null?"":sug),motivo:motivo});if(d.ok){tj("Meta guardada \\u2713");await load();go("metas");}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
+'async function doMeta(id){var ot=(document.getElementById("mo_"+id).value||"").trim();var m=document.getElementById("mm_"+id).value;if(!m){tj("Escribe la meta");return;}var sug=SUG[id];var motivo="";if(sug!=null&&Math.abs(Number(sug)-Number(m))>=1){motivo=prompt("Ajustaste la meta sugerida ("+sug+"/hr). \\u00bfPor qu\\u00e9? Queda registrado.");if(motivo==null||!motivo.trim()){tj("Ajustar la sugerida pide motivo");return;}}var d=await post({action:"set_meta",linea_id:id,orden:ot,meta:m,meta_sugerida:(sug==null?"":sug),motivo:motivo,fecha:(METAF=="manana"?(ST.fecha_manana||""):(ST.fecha||""))});if(d.ok){tj("Meta guardada \\u2713");await load();go("metas");}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
 // ----- V1.5: capturar/editar estándar (gobierno: Gaby) -----
 'var ESTPROC=[["PP_481","P&P 481"],["PP_520","P&P 520"],["PP_411_481","P&P 411-481"],["PP_421","P&P 421"],["ENSAMBLE_MANUAL","Ensamble Manual"],["WAVE_SOLDER","Wave/Ola"],["SOLDEO_MANUAL","Soldeo Manual"],["ICT","ICT"],["GRB","Grabación"],["CONFORMAL","Conformal"],["LIMPIEZA","Limpieza"],["FCT","FCT"],["ENSAMBLES","Ensambles"],["PRUEBA_FCT","Prueba FCT"],["EMPAQUE","Empaque"]];',
 'function estOpts(list){return list.map(function(p){return "<option value=\\""+h(p.np)+"\\">"+h(p.np)+(p.desc?" \\u00b7 "+h(String(p.desc).slice(0,40)):"")+"</option>";}).join("");}',
@@ -417,10 +458,22 @@ const PAGE = [
 '  var sel="<select id=\\"estpick\\" style=\\"min-width:260px\\"><option value=\\"\\">\\u2014 elige una parte \\u2014</option>"+(prio.length?"<optgroup label=\\"\\u26a0 Sin est\\u00e1ndar \\u00b7 de OT en proceso ("+prio.length+")\\">"+estOpts(prio)+"</optgroup>":"")+(sin.length?"<optgroup label=\\"Sin est\\u00e1ndar ("+sin.length+")\\">"+estOpts(sin)+"</optgroup>":"")+(con.length?"<optgroup label=\\"Con est\\u00e1ndar \\u2014 editar ("+con.length+")\\">"+estOpts(con)+"</optgroup>":"")+"</select>";',
 '  v.innerHTML="<div class=\\"card\\"><h2>Capturar / editar est\\u00e1ndar por hora</h2><div class=\\"muted\\" style=\\"margin-bottom:10px\\">Llena el Std/Hr (pz/hr te\\u00f3ricas) de cada estaci\\u00f3n. Se guarda al salir del campo. Vac\\u00edo = borra. Las partes \\u26a0 <b>de OT en proceso</b> son prioridad: al llenarlas, su meta sale sola.</div><div class=\\"row\\">"+sel+" <span id=\\"estinfo\\" class=\\"muted\\"></span></div><div id=\\"estgrid\\" style=\\"margin-top:12px\\"></div></div>";',
 '  var pick=document.getElementById("estpick");pick.onchange=function(){estGrid(pick.value);};if(prio.length){pick.value=prio[0].np;estGrid(prio[0].np);}}',
+'function estCol(has){return has?"background:#e9f7ef;border:1px solid #b7e4c7":"background:#fafafa;border:1px dashed var(--bd)";}',
 'function estGrid(np){var info=document.getElementById("estinfo");var g=document.getElementById("estgrid");if(!np){g.innerHTML="";if(info)info.textContent="";return;}var cur=(ST.estMap||{})[np]||{};var pp=(ST.estParts||[]).filter(function(x){return x.np===np;})[0]||{};if(info)info.innerHTML=pp.enOt?"<span class=\\"pill no\\">en OT en proceso</span>":"";',
-'  g.innerHTML="<div style=\\"display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px\\">"+ESTPROC.map(function(pc){var val=cur[pc[0]];var has=val!=null;return "<div style=\\"border:1px solid var(--bd);border-radius:10px;padding:9px 11px\\"><div class=\\"muted\\" style=\\"font-weight:700\\">"+h(pc[1])+(has?"":" \\u00b7 vac\\u00edo")+"</div><input type=\\"number\\" min=\\"0\\" step=\\"0.1\\" value=\\""+(has?val:"")+"\\" id=\\"es_"+pc[0]+"\\" style=\\"width:100%;margin-top:5px\\"><div class=\\"muted\\" id=\\"esm_"+pc[0]+"\\" style=\\"min-height:13px;font-size:11px\\"></div></div>";}).join("")+"</div>";',
+'  g.innerHTML="<div style=\\"display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px\\">"+ESTPROC.map(function(pc){var val=cur[pc[0]];var has=val!=null;return "<div id=\\"esbox_"+pc[0]+"\\" style=\\"border-radius:10px;padding:9px 11px;"+estCol(has)+"\\"><div class=\\"muted\\" style=\\"font-weight:700\\">"+(has?"\\u2705 ":"")+h(pc[1])+(has?"":" \\u00b7 vac\\u00edo")+"</div><input type=\\"number\\" min=\\"0\\" step=\\"0.1\\" value=\\""+(has?val:"")+"\\" id=\\"es_"+pc[0]+"\\" style=\\"width:100%;margin-top:5px\\"><div class=\\"muted\\" id=\\"esm_"+pc[0]+"\\" style=\\"min-height:13px;font-size:11px\\"></div></div>";}).join("")+"</div>";',
 '  ESTPROC.forEach(function(pc){var inp=document.getElementById("es_"+pc[0]);if(!inp)return;inp.onchange=function(){doEstandar(np,pc[0],inp.value,pp.desc||"");};});}',
-'async function doEstandar(np,proc,val,desc){var msg=document.getElementById("esm_"+proc);if(msg)msg.textContent="guardando\\u2026";var d=await post({action:"set_estandar",numero_parte:np,proceso:proc,std_hr:val,descripcion:desc});if(d&&d.ok){if(msg)msg.textContent=d.cleared?"borrado":"guardado \\u2713";ST.estMap=ST.estMap||{};ST.estMap[np]=ST.estMap[np]||{};if(d.cleared){delete ST.estMap[np][proc];}else{ST.estMap[np][proc]=d.std;}}else if(d&&d.code=="auth"){logout();}else{if(msg)msg.textContent=(d&&d.error)||"error";}}',
+'async function doEstandar(np,proc,val,desc){var msg=document.getElementById("esm_"+proc);if(msg)msg.textContent="guardando\\u2026";var d=await post({action:"set_estandar",numero_parte:np,proceso:proc,std_hr:val,descripcion:desc});if(d&&d.ok){if(msg)msg.textContent=d.cleared?"borrado":"guardado \\u2713";ST.estMap=ST.estMap||{};ST.estMap[np]=ST.estMap[np]||{};if(d.cleared){delete ST.estMap[np][proc];}else{ST.estMap[np][proc]=d.std;}var box=document.getElementById("esbox_"+proc);if(box)box.style.cssText="border-radius:10px;padding:9px 11px;"+estCol(!d.cleared);var lbl=box&&box.firstChild;var nm=(ESTPROC.filter(function(x){return x[0]==proc;})[0]||[proc,proc])[1];if(lbl)lbl.innerHTML=(d.cleared?h(nm)+" \\u00b7 vac\\u00edo":"\\u2705 "+h(nm));}else if(d&&d.code=="auth"){logout();}else{if(msg)msg.textContent=(d&&d.error)||"error";}}',
+// ----- V2: Pareo SMT↔final (planeación / Nayeli) -----
+'function renderPareo(v){if(!(ME&&(ME.es_admin||ME.puede_pareo))){v.innerHTML="<div class=\\"card\\"><div class=\\"muted\\">Solo planeaci\\u00f3n (Nayeli) carga el pareo.</div></div>";return;}',
+'  var pend=ST.pareoPend||[];var subs=ST.subensambles||[];',
+'  var opt="<option value=\\"\\">\\u2014 elige subensamble \\u2014</option>"+subs.map(function(s){return "<option value=\\""+h(s)+"\\">"+h(s)+"</option>";}).join("");',
+'  var prows=pend.length?pend.map(function(p,i){return "<div class=\\"tline\\" style=\\"display:block;background:#fafafa;border:1px dashed var(--bd)\\"><div class=\\"row\\" style=\\"align-items:flex-end;gap:8px\\"><div style=\\"flex:1;min-width:140px\\"><b>"+h(p.np)+"</b> <span class=\\"muted\\">"+(p.ord!=null?p.ord+" ord":"")+(p.term!=null?" \\u00b7 "+p.term+" term":"")+"</span></div><div class=\\"field\\"><label>Subensamble</label><select id=\\"ps_"+i+"\\">"+opt+"</select></div><div class=\\"field\\"><label>o nuevo</label><input id=\\"pn_"+i+"\\" placeholder=\\"nuevo\\" style=\\"width:120px\\"></div><button class=\\"btn primary sm\\" onclick=\\"doPareo("+i+")\\">parear</button><button class=\\"btn sm\\" onclick=\\"doSinSub("+i+")\\">sin sub</button></div></div>";}).join(""):"<div class=\\"muted\\">Sin pendientes. \\ud83c\\udf89</div>";',
+'  var byS={};(ST.pareo||[]).forEach(function(r){(byS[r.smt]=byS[r.smt]||[]).push(r);});',
+'  var groups=Object.keys(byS).sort().map(function(s){var chips=byS[s].map(function(r){return "<span class=\\"pill\\" style=\\"background:#e9f7ef;border:1px solid #b7e4c7\\">"+h(r.final)+" <a href=\\"#\\" onclick=\\"doDelPareo(\\x27"+r.id+"\\x27);return false;\\" style=\\"color:#b91c1c;text-decoration:none;font-weight:700\\">\\u00d7</a></span>";}).join(" ");return "<div class=\\"tline\\" style=\\"display:block\\"><div><b>"+h(s)+"</b> <span class=\\"muted\\">"+byS[s].length+" final(es)</span></div><div style=\\"margin-top:6px;display:flex;flex-wrap:wrap;gap:6px\\">"+chips+"</div></div>";}).join("");',
+'  v.innerHTML="<div class=\\"card\\"><h2>Pareo SMT \\u2194 final \\u2014 pendientes ("+pend.length+")</h2><div class=\\"muted\\" style=\\"margin-bottom:10px\\">Cada parte en proceso sin pareo, por volumen. As\\u00edgnale su <b>subensamble SMT</b> (de la lista o escribe uno nuevo) o marca <b>sin sub</b> si es 1:1. Se guarda como dato oficial en el sistema.</div>"+prows+"</div><div class=\\"card\\"><h2>Pareos cargados ("+(ST.pareo||[]).length+")</h2><div class=\\"muted\\" style=\\"margin-bottom:8px\\">Un subensamble \\u2192 muchos finales (1:N). La \\u00d7 quita una pareja.</div>"+(groups||"<div class=\\"muted\\">A\\u00fan no hay pareos.</div>")+"</div>";}',
+'async function doPareo(i){var p=(ST.pareoPend||[])[i];if(!p)return;var sel=document.getElementById("ps_"+i).value;var nv=(document.getElementById("pn_"+i).value||"").trim();var smt=nv||sel;if(!smt){tj("Elige o escribe el subensamble");return;}var d=await post({action:"set_pareo",parte_final:p.np,parte_smt:smt});if(d.ok){tj("Pareado \\u2713");await load();go("pareo");}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
+'async function doSinSub(i){var p=(ST.pareoPend||[])[i];if(!p)return;if(!confirm("\\u00bfMarcar "+p.np+" como SIN subensamble (1:1)?"))return;var d=await post({action:"mark_sin_sub",parte_final:p.np});if(d.ok){tj("Marcado \\u2713");await load();go("pareo");}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
+'async function doDelPareo(id){if(!confirm("\\u00bfQuitar esta pareja?"))return;var d=await post({action:"del_pareo",pareo_id:id});if(d.ok){tj("Quitado \\u2713");await load();go("pareo");}else if(d.code=="auth"){logout();}else tj(d.error||"no se pudo");}',
 'function rolSel(id,sel){var R=["paros","faltantes","calidad","mantenimiento","direccion"];return "<select id=\\""+id+"\\">"+R.map(function(r){return "<option"+(sel==r?" selected":"")+">"+r+"</option>";}).join("")+"</select>";}',
 'function grpSel(id,sel){var G=["SMT","PTH","EMPAQUE","EMBARQUES"];if(sel&&G.indexOf(sel)<0)G=G.concat([sel]);var ph=sel?"":"<option value=\\"\\">— elige categoría —</option>";return "<select id=\\""+id+"\\">"+ph+G.map(function(g){return "<option"+(sel==g?" selected":"")+">"+g+"</option>";}).join("")+"</select>";}',
 'function pSel(id,sel){return "<select id=\\""+id+"\\"><option value=\\"\\">— sin líder —</option>"+ST.personas.map(function(p){return "<option value=\\""+p.id+"\\""+(sel==p.id?" selected":"")+">"+h(p.nombre)+"</option>";}).join("")+"</select>";}',
