@@ -1,5 +1,31 @@
 # AGENTS.md — Horacio (bot HxH Mapartel · SN-04 v2)
 
+## Bitácora 2026-07-01 (tarde) — Consolidación Fase A, fixes de pareo, y multi-orden Embarques
+
+Sesión de iteración sobre el panel V1 (todo en `n8n/horacio-panel.code.js`, deploy hot).
+
+- **Alta Nayeli (planeación):** `puede_pareo`+`puede_meta`=true, PIN temporal, **rol `faltantes` intacto**
+  (es dueña del escalamiento de faltantes; el tab se gatea por flag, no por rol).
+- **Fix pareo (colisión + silencioso):** `norm_np` quita `_SMT`, así "TJ000360_SMT" colapsaba a "TJ000360"
+  (=el final) → `set_pareo` **decía ✓ sin guardar**. Ahora da **error claro**. Nuevo botón **"es sub"**
+  (`sql/041` + `subensambles_smt`): declara una parte como subensamble SMT (sale de pendientes, queda en
+  el dropdown). **Regla:** el export ya marca el SMT (`es_smt`/partida 02/"SMT" en descripción) → esos van
+  con "es sub"; partida 01 = final → "parear"; parte simple → "sin sub".
+- **Consolidación Fase A (migrar captura de `horacio-v2` → panel V1):** A1 = tab **Calendario** (horario del
+  turno, `set_cal_config`) migrado. Pendientes A2 (OT estado/`set_motivo`) y A3 (Programa — motor+drag&drop).
+  Plan: V1 = única captura, Dashboard = única lectura, retirar `horacio-v2`.
+- **Buscador en Estándar:** el `<select>` gigante → **input con datalist** (busca por número de parte O
+  descripción) + chips de prioridad.
+- **Fix auto-refresco:** el `setInterval(load,30000)` recargaba cualquier tab y **borraba lo que escribías**
+  en captura → ahora solo refresca en **captura en vivo y paros**.
+- **Mapeo a EMPAQUE:** Empaque 1s/Andr + **Embarques** → proceso `EMPAQUE` en `linea_proceso` (el estándar
+  del FINAL; Empaque y Embarques trabajan el producto terminado). Con eso ya sugieren meta.
+- **Multi-orden Embarques (`sql/042`):** `lineas.multi_orden` (solo Embarques ON). El tab Metas para ese
+  tablero permite **varias órdenes (chips) con UNA meta**; se guarda **una fila vigente** con `orden`=lista
+  por comas → **bot/dashboard no cambian** (solo muestran `orden`, sin JOIN, LIMIT 1). Demás tableros igual.
+- **Datos aplicados en prod (no en git):** grants de Nayeli, mapeos `linea_proceso`, flag `multi_orden`.
+- Validación: `scratchpad/check_panel.mjs` (doble `node --check` + mock-DOM de todos los render nuevos).
+
 ## Bitácora 2026-07-01 — V2 arranque: Pareo SMT↔final como información oficial (tab autoservicio)
 
 **Objetivo:** desbloquear el pareo SMT↔PTH de la reunión 26-jun + sesión Nayeli 29-jun. El pareo
