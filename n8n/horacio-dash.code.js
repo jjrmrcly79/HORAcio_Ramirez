@@ -97,6 +97,7 @@ if (q.data !== '1') {
 '<div class="kpis" id="kpis"></div>',
 '<div id="revisar"></div>',
 '<div class="card"><h2>Flujo de hoy — ¿dónde se atora?</h2><div id="flujo"><div class="empty">cargando…</div></div><div id="cuello"></div><div id="stageDetail"></div></div>',
+'<div class="card" id="wipCard"><h2>Material entre SMT y final (WIP por subensamble)</h2><div id="wip"><div class="empty">cargando…</div></div></div>',
 '<div class="card" id="parosCard" style="display:none"><h2>🛑 Paros de hoy · causa raíz</h2><div id="parosHoy"></div><div id="parosRec"></div></div>',
 '<div class="grid2"><div class="card"><h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px">Cumplimiento por tablero (hoy) <span id="tabTog" style="font-size:12px;font-weight:400;color:var(--accent);cursor:pointer;white-space:nowrap">ver todos ▾</span></h2><div id="tableros" style="display:none"></div></div>',
 '<div class="card"><h2>¿Quién está subiendo su info? (hoy)</h2><div id="hb"></div></div></div>',
@@ -168,6 +169,11 @@ if (q.data !== '1') {
 '  box.innerHTML="<div class=\\"cuellobox\\"><div class=\\"muted\\" style=\\"margin-bottom:6px\\"><b>"+s.etapa+"</b> \\u2014 "+lbl+note+":</div>"+renderRamas(s)+"</div>";}',
 'function toggleStage(i){openStage=(openStage===i?-1:i);renderStageDetail();}',
 'function pqToggle(i){var e=document.getElementById("pq_"+i);if(e)e.style.display=(e.style.display==="none"?"block":"none");}',
+'function renderWip(d){var W=d.wip||[];var box=document.getElementById("wip");if(!box)return;',
+'  var conF=W.filter(function(x){return x.act>0;});var sinF=W.filter(function(x){return x.act===0&&x.smt>0;});',
+'  var t1=conF.length?("<table><tr><th>Subensamble</th><th class=\\"num\\">SMT hecho</th><th class=\\"num\\">Finales</th><th class=\\"num\\">WIP+buffer</th></tr>"+conF.map(function(x){var c=x.wip>0?"var(--warn)":"var(--ok)";return "<tr><td>"+h(x.sub)+" <span class=\\"muted\\">("+x.act+" final"+(x.act>1?"es":"")+")</span></td><td class=\\"num\\">"+x.smt+"</td><td class=\\"num\\">"+x.fin+"</td><td class=\\"num\\" style=\\"color:"+c+"\\">"+x.wip+"</td></tr>";}).join("")+"</table>"):"<div class=\\"empty\\">Sin subensambles con finales activos hoy.</div>";',
+'  var t2=sinF.length?("<div class=\\"muted\\" style=\\"margin-top:12px\\">SMT hecho <b>sin finales en proceso</b> (no es atoron — sus finales aún no corren o falta parearlos):</div><table>"+sinF.map(function(x){return "<tr><td>"+h(x.sub)+"</td><td class=\\"num\\">"+x.smt+" pz SMT</td></tr>";}).join("")+"</table>"):"";',
+'  box.innerHTML="<div class=\\"muted\\" style=\\"margin-bottom:8px\\">Agrupado por subensamble (pareo 1:N). <b>WIP+buffer</b> = SMT hecho \\u2212 finales hechos; incluye stock de seguridad y falta el factor de cantidad \\u2014 directional, sin el falso atoron por orden.</div>"+t1+t2;}',
 'function renderParos(d){var P=d.parosHoy||[],R=d.parosRecurrentes||[];var card=document.getElementById("parosCard");if(!card)return;',
 '  if(!P.length&&!R.length){card.style.display="none";return;}card.style.display="";',
 '  var h1=P.length?"":"<div class=\\"empty\\">Sin paros hoy 🎉</div>";',
@@ -204,6 +210,7 @@ if (q.data !== '1') {
 '    document.getElementById("tableros").innerHTML=ht||"<div class=\\"empty\\">Sin datos hoy</div>";',
 '    try{renderFlujo(d)}catch(fe){document.getElementById("flujo").innerHTML="<div class=\\"empty\\">flujo no cargó</div>"}',
 '    try{renderParos(d)}catch(pe){}',
+'    try{renderWip(d)}catch(we){document.getElementById("wip").innerHTML="<div class=\\"empty\\">WIP no cargó</div>"}',
 '    var rev=d.revisar||[];document.getElementById("revisar").innerHTML=rev.length?("<div class=\\"revbox\\"><b>⚠️ "+rev.length+" tablero(s) con dato sospechoso</b> (&gt;115%, fuera del rango esperado 85–115%) — revisar meta o captura: "+rev.map(function(x){return x.nombre+" ("+x.pctRaw+"%)";}).join(" · ")+". El número final ya cuenta cada proceso máx. 100%.</div>"):"";',
 '    var hh="";d.lideres.forEach(function(l){var pc=l.pct==null?0:l.pct;var c=pc>=80?"var(--ok)":pc>=50?"var(--warn)":"var(--bad)";',
 '      hh+="<div class=\\"tab\\"><div><b>"+l.nombre+"</b><div class=\\"bar\\"><i style=\\"width:"+Math.min(pc,100)+"%;background:"+c+"\\"></i></div></div><div class=\\"num\\" style=\\"text-align:right\\">"+l.reportados+"/"+l.esperados+"<div class=\\"muted\\" style=\\"font-weight:400\\">captura "+(l.ultima||"—")+"</div></div></div>"});',
@@ -437,6 +444,12 @@ try {
     .map((r) => ({ causa: r.causa, linea: r.linea, grupo: r.grupo, veces: Number(r.veces_7d) || 0, min: Number(r.min_7d) || 0 }));
 } catch (e) { parosRecurrentes = []; }
 
+let wip = [];
+try {
+  wip = (await pg("SELECT subensamble, smt_term, fin_term, finales_activos, wip_mas_buffer FROM horacio.v_wip_smt WHERE smt_term>0 OR fin_term>0 ORDER BY (finales_activos>0) DESC, wip_mas_buffer DESC"))
+    .map((r) => ({ sub: r.subensamble, smt: Number(r.smt_term) || 0, fin: Number(r.fin_term) || 0, act: Number(r.finales_activos) || 0, wip: Number(r.wip_mas_buffer) || 0 }));
+} catch (e) { wip = []; }
+
 const payload = {
   fecha, hora: now.toFormat('HH:mm'),
   kpis: {
@@ -446,7 +459,7 @@ const payload = {
     faltAbiertos: Number(K.falt_ab) || 0, calAbiertos: Number(K.cal_ab) || 0,
     reaccionMin: (K.reaccion_min == null ? null : Number(K.reaccion_min)),
   },
-  tableros, lideres, escalamientos: escal, porHora, pareto, topArea, paretoDia, topAreaDia, embarques, flujo, cuelloDetalle, parosHoy, parosRecurrentes,
+  tableros, lideres, escalamientos: escal, porHora, pareto, topArea, paretoDia, topAreaDia, embarques, flujo, cuelloDetalle, parosHoy, parosRecurrentes, wip,
   revisar: tableros.filter((t) => t.over).map((t) => ({ nombre: t.nombre, pctRaw: t.pctRaw, real: t.real, plan: t.plan, unidad: t.unidad })),
   semana,
 };

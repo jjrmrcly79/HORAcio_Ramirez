@@ -1,5 +1,25 @@
 # AGENTS.md — Horacio (bot HxH Mapartel · SN-04 v2)
 
+## Bitácora 2026-07-01 (cierre) — Fase 2: WIP por subensamble sobre el pareo
+
+Nayeli **cerró el pareo al 100%** del volumen en proceso (117 parejas, 25 subensambles con finales,
+13 declarados "es sub", 1 sin-sub, 0 pendientes). Eso desbloqueó Fase 2.
+
+- **`sql/043` `v_wip_smt`:** WIP agrupado por **subensamble** (pareo 1:N) en vez de 1:1 por `orden_base`
+  → **adiós falsos atorones**. `wip_mas_buffer = SMT_term − Σ finales_term`. Validado: ANDROMEDA (el caso
+  estrella de la reunión) pasó de "500 atoradas" falsas a **0** pooled. ⚠️ v1 directional: aún mezcla
+  buffer + falta factor de cantidad (2:1) y stock de seguridad (Brenda).
+- **Dashboard (Fase 2b):** sección **"Material entre SMT y final (WIP por subensamble)"** en `horacio-dash`
+  (`ng4loQv932n2AIRC`, nodo "Horacio Dash", deploy hot). Separa **con finales activos** (WIP real) de
+  **sin finales en proceso** (TJ000360… — NO atoron). Valida con `scratchpad/check_dash.mjs`
+  (gotcha: extraer el `<script>` inline con `indexOf('</script>', scriptStart)` porque el `<script src>`
+  de Chart.js trae un `</script>` antes).
+- **Docs para el cliente:** `docs/Horacio-Pareo-Revision-Nayeli-2026-07-01.md` (doble-check del pareo) y
+  `docs/Horacio-Insumos-WIP-Nayeli-Brenda-2026-07-01.md` (pide a Nayeli los finales de los declarados +
+  a Brenda el factor de cantidad y el stock de seguridad → lo único que falta para WIP exacto).
+- **Pendiente:** consolidación Fase A (A2 OT estado/`set_motivo`, A3 Programa) y Fase 2 exacta cuando
+  llegue el dato de Brenda/Gabriela.
+
 ## Bitácora 2026-07-01 (tarde) — Consolidación Fase A, fixes de pareo, y multi-orden Embarques
 
 Sesión de iteración sobre el panel V1 (todo en `n8n/horacio-panel.code.js`, deploy hot).
